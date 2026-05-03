@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Market Watch</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="page">
+    <section class="ticker ticker-left" aria-label="Nasdaq 100">
+      <div>
+        <p class="label">NASDAQ 100</p>
+        <h1 id="nasdaq-price">불러오는 중</h1>
+        <p id="nasdaq-change" class="change">-</p>
+      </div>
+      <span class="badge">NDX</span>
+    </section>
+
+    <section class="ticker ticker-right" aria-label="VIX">
+      <div>
+        <p class="label">VIX 지수</p>
+        <h1 id="vix-price">불러오는 중</h1>
+        <p id="vix-change" class="change">-</p>
+      </div>
+      <span class="badge">VIX</span>
+    </section>
+
+    <section class="center-panel">
+      <p class="eyebrow">Live Market Dashboard</p>
+      <h2>나스닥 100과 VIX를 한 화면에서 확인</h2>
+      <p class="description">
+        데이터는 Yahoo Finance 공개 차트 엔드포인트에서 가져옵니다.
+        시장 휴장일에는 마지막 거래일 기준으로 표시됩니다.
+      </p>
+      <button id="refresh-button" type="button">새로고침</button>
+      <p id="updated-at" class="updated">업데이트 대기 중</p>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
