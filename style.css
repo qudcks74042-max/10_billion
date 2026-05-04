@@ -100,19 +100,22 @@ h1 {
   text-align: center;
 }
 
-.tv-chart,
+.market-chart,
 .fear-chart {
   flex: 1;
   min-height: 0;
 }
 
-.tradingview-widget-container,
-.tradingview-widget-container__widget,
-.tv-chart iframe {
+.market-chart {
+  position: relative;
+  padding: 14px;
+}
+
+.market-chart svg,
+.fear-chart svg {
   width: 100%;
   height: 100%;
   display: block;
-  border: 0;
 }
 
 .fear-chart {
@@ -121,16 +124,42 @@ h1 {
   color: #d1d5db;
 }
 
-.fear-chart svg {
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-
+.market-chart p,
 .fear-chart p {
   margin: 0;
   color: #9ca3af;
   font-size: 14px;
+}
+
+.quote-meta {
+  position: absolute;
+  left: 18px;
+  top: 14px;
+  z-index: 1;
+}
+
+.quote-price {
+  color: #f9fafb;
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.quote-change {
+  margin-top: 3px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.positive {
+  color: #ef4444;
+}
+
+.negative {
+  color: #38bdf8;
+}
+
+.neutral {
+  color: #d1d5db;
 }
 
 .fear-meta {

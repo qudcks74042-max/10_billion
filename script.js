@@ -1,33 +1,150 @@
-const tradingViewOptions = {
-  autosize: true,
-  interval: "60",
-  timezone: "Asia/Seoul",
-  theme: "dark",
-  style: "1",
-  locale: "kr",
-  allow_symbol_change: true,
-  calendar: false,
-  support_host: "https://www.tradingview.com",
-};
+const numberFormat = new Intl.NumberFormat("en-US", {
+  maximumFractionDigits: 2,
+});
 
-function createTradingViewChart(container) {
+const percentFormat = new Intl.NumberFormat("en-US", {
+  maximumFractionDigits: 2,
+  minimumFractionDigits: 2,
+});
+
+async function fetchYahooSeries(symbol) {
+  const encoded = encodeURIComponent(symbol);
+  const response = await fetch(
+    `https://query1.finance.yahoo.com/v8/finance/chart/${encoded}?range=5d&interval=15m`,
+  );
+
+  if (!response.ok) {
+    throw new Error(`${symbol} 데이터를 불러오지 못했습니다.`);
+  }
+
+  const result = (await response.json()).chart?.result?.[0];
+  const closes = result?.indicators?.quote?.[0]?.close ?? [];
+  const timestamps = result?.timestamp ?? [];
+  const previousClose = result?.meta?.chartPreviousClose;
+  const points = closes
+    .map((value, index) => ({
+      date: timestamps[index] * 1000,
+      value: Number(value),
+    }))
+    .filter((point) => Number.isFinite(point.date) && Number.isFinite(point.value));
+
+  if (points.length < 2) {
+    throw new Error(`${symbol} 차트 데이터가 부족합니다.`);
+  }
+
+  return {
+    points,
+    previous: Number.isFinite(previousClose) ? previousClose : points.at(-2).value,
+  };
+}
+
+async function fetchFredSeries() {
+  const response = await fetch("https://fred.stlouisfed.org/graph/fredgraph.csv?id=FEDFUNDS");
+
+  if (!response.ok) {
+    throw new Error("기준금리 데이터를 불러오지 못했습니다.");
+  }
+
+  const text = await response.text();
+  const rows = text.trim().split("\n").slice(1);
+  const points = rows
+    .map((row) => {
+      const [date, value] = row.split(",");
+      return {
+        date: new Date(date).getTime(),
+        value: Number(value),
+      };
+    })
+    .filter((point) => Number.isFinite(point.date) && Number.isFinite(point.value))
+    .slice(-120);
+
+  if (points.length < 2) {
+    throw new Error("기준금리 차트 데이터가 부족합니다.");
+  }
+
+  return { points, previous: points.at(-2).value };
+}
+
+function getBounds(points) {
+  const values = points.map((point) => point.value);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const padding = (max - min || Math.abs(max) || 1) * 0.08;
+
+  return {
+    min: min - padding,
+    max: max + padding,
+    start: points[0].date,
+    end: points.at(-1).date,
+  };
+}
+
+function buildLinePath(points, bounds, width, height, pad) {
+  const usableWidth = width - pad * 2;
+  const usableHeight = height - pad * 2;
+
+  return points
+    .map((point, index) => {
+      const x = pad + ((point.date - bounds.start) / (bounds.end - bounds.start || 1)) * usableWidth;
+      const y =
+        height - pad - ((point.value - bounds.min) / (bounds.max - bounds.min || 1)) * usableHeight;
+      return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
+    })
+    .join(" ");
+}
+
+function renderMarketChart(container, series) {
+  const points = series.points;
+  const latest = points.at(-1).value;
+  const change = latest - series.previous;
+  const changePercent = series.previous === 0 ? 0 : (change / series.previous) * 100;
+  const tone = change > 0 ? "positive" : change < 0 ? "negative" : "neutral";
+  const sign = change > 0 ? "+" : "";
+  const width = 760;
+  const height = 250;
+  const pad = 30;
+  const bounds = getBounds(points);
+  const linePath = buildLinePath(points, bounds, width, height, pad);
+  const fillPath = `${linePath} L ${width - pad} ${height - pad} L ${pad} ${height - pad} Z`;
+
+  container.innerHTML = `
+    <div class="quote-meta">
+      <div class="quote-price">${numberFormat.format(latest)}</div>
+      <div class="quote-change ${tone}">
+        ${sign}${numberFormat.format(change)} (${sign}${percentFormat.format(changePercent)}%)
+      </div>
+    </div>
+    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${container.dataset.symbol} chart">
+      <defs>
+        <linearGradient id="line-${container.dataset.symbol.replace(/[^a-z0-9]/gi, "")}" x1="0" x2="1" y1="0" y2="0">
+          <stop offset="0%" stop-color="#38bdf8" />
+          <stop offset="100%" stop-color="#22c55e" />
+        </linearGradient>
+        <linearGradient id="fill-${container.dataset.symbol.replace(/[^a-z0-9]/gi, "")}" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.22" />
+          <stop offset="100%" stop-color="#38bdf8" stop-opacity="0" />
+        </linearGradient>
+      </defs>
+      <line x1="${pad}" y1="${height - pad}" x2="${width - pad}" y2="${height - pad}" stroke="#334155" />
+      <line x1="${pad}" y1="${pad}" x2="${pad}" y2="${height - pad}" stroke="#334155" />
+      <line x1="${pad}" y1="${height * 0.35}" x2="${width - pad}" y2="${height * 0.35}" stroke="#1f2937" />
+      <line x1="${pad}" y1="${height * 0.6}" x2="${width - pad}" y2="${height * 0.6}" stroke="#1f2937" />
+      <path d="${fillPath}" fill="url(#fill-${container.dataset.symbol.replace(/[^a-z0-9]/gi, "")})" />
+      <path d="${linePath}" fill="none" stroke="url(#line-${container.dataset.symbol.replace(/[^a-z0-9]/gi, "")})" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+    </svg>
+  `;
+}
+
+function renderChartError(container, error) {
+  container.innerHTML = `<p>${error.message}</p>`;
+}
+
+async function loadMarketChart(container) {
+  const kind = container.dataset.kind;
   const symbol = container.dataset.symbol;
-  const widget = document.createElement("div");
-  const chartTarget = document.createElement("div");
-  const script = document.createElement("script");
+  const series = kind === "fred" ? await fetchFredSeries() : await fetchYahooSeries(symbol);
 
-  widget.className = "tradingview-widget-container";
-  chartTarget.className = "tradingview-widget-container__widget";
-  script.type = "text/javascript";
-  script.async = true;
-  script.src = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
-  script.innerHTML = JSON.stringify({
-    ...tradingViewOptions,
-    symbol,
-  });
-
-  widget.append(chartTarget, script);
-  container.appendChild(widget);
+  renderMarketChart(container, series);
 }
 
 function normalizeFearGreedPoint(point) {
@@ -129,7 +246,9 @@ function renderFearGreedFallback(error) {
   `;
 }
 
-document.querySelectorAll(".tv-chart").forEach(createTradingViewChart);
+document.querySelectorAll(".market-chart").forEach((container) => {
+  loadMarketChart(container).catch((error) => renderChartError(container, error));
+});
 
 loadFearGreedChart().catch(renderFearGreedFallback);
 
