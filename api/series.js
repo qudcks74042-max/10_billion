@@ -23,12 +23,9 @@ async function fetchYahoo(symbol) {
     throw new Error("지원하지 않는 Yahoo 심볼입니다.");
   }
 
-  const encoded = encodeURIComponent(symbol);
   const response = await fetch(
-    `https://query1.finance.yahoo.com/v8/finance/chart/${encoded}?range=5d&interval=15m`,
-    {
-      headers: { "User-Agent": "Mozilla/5.0" },
-    },
+    `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=5d&interval=15m`,
+    { headers: { "User-Agent": "Mozilla/5.0" } },
   );
 
   if (!response.ok) {
@@ -63,15 +60,11 @@ async function fetchFred() {
     throw new Error("기준금리 데이터를 불러오지 못했습니다.");
   }
 
-  const text = await response.text();
-  const rows = text.trim().split("\n").slice(1);
+  const rows = (await response.text()).trim().split("\n").slice(1);
   const points = rows
     .map((row) => {
       const [date, value] = row.split(",");
-      return {
-        date: new Date(date).getTime(),
-        value: Number(value),
-      };
+      return { date: new Date(date).getTime(), value: Number(value) };
     })
     .filter((point) => Number.isFinite(point.date) && Number.isFinite(point.value))
     .slice(-120);
@@ -84,27 +77,24 @@ async function fetchFred() {
 }
 
 function getKstDateString() {
-  const formatter = new Intl.DateTimeFormat("en-CA", {
+  return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Seoul",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  });
-
-  return formatter.format(new Date()).replaceAll("-", "");
+  })
+    .format(new Date())
+    .replaceAll("-", "");
 }
 
 function parseNumber(value) {
   return Number(value.replaceAll(",", ""));
 }
 
-async function fetchNaverInvestorRows(sosok) {
-  const bizdate = getKstDateString();
+async function fetchNaverInvestorRows() {
   const response = await fetch(
-    `https://finance.naver.com/sise/investorDealTrendDay.naver?bizdate=${bizdate}&sosok=${sosok}&page=1`,
-    {
-      headers: { "User-Agent": "Mozilla/5.0" },
-    },
+    `https://finance.naver.com/sise/investorDealTrendDay.naver?bizdate=${getKstDateString()}&sosok=&page=1`,
+    { headers: { "User-Agent": "Mozilla/5.0" } },
   );
 
   if (!response.ok) {
@@ -140,15 +130,10 @@ async function fetchNaverFlow(kind) {
     throw new Error("지원하지 않는 수급 항목입니다.");
   }
 
-  const rows = await fetchNaverInvestorRows("");
+  const rows = await fetchNaverInvestorRows();
   const key = kind === "foreign" ? "foreign" : "institution";
   const points = rows
-    .map((row) => {
-      return {
-        date: naverDateToTime(row.date),
-        value: row[key],
-      };
-    })
+    .map((row) => ({ date: naverDateToTime(row.date), value: row[key] }))
     .reverse();
 
   if (points.length < 2) {
@@ -158,8 +143,42 @@ async function fetchNaverFlow(kind) {
   return { points, previous: points.at(-2).value, unit: "억원" };
 }
 
+function getFearGreedRating(value) {
+  if (value <= 24) return "Extreme Fear";
+  if (value <= 44) return "Fear";
+  if (value <= 55) return "Neutral";
+  if (value <= 74) return "Greed";
+  return "Extreme Greed";
+}
+
 async function fetchFearGreed() {
-  const response = await fetch("https://production.dataviz.cnn.io/index/fearandgreed/graphdata", {
+  try {
+    const response = await fetch("https://production.dataviz.cnn.io/index/fearandgreed/graphdata", {
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+        Accept: "application/json",
+        Referer: "https://www.cnn.com/markets/fear-and-greed",
+      },
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      const score = Number(data.fear_and_greed?.score);
+
+      if (Number.isFinite(score)) {
+        return {
+          display: "gauge",
+          value: score,
+          rating: data.fear_and_greed?.rating || getFearGreedRating(score),
+          asOf: "CNN",
+        };
+      }
+    }
+  } catch {
+    // CNN blocks some server-side requests. Use the public mirror below.
+  }
+
+  const response = await fetch("https://www.finhacker.cz/en/fear-and-greed-index-historical-data-and-chart/", {
     headers: { "User-Agent": "Mozilla/5.0" },
   });
 
@@ -167,24 +186,22 @@ async function fetchFearGreed() {
     throw new Error("Fear & Greed 데이터를 불러오지 못했습니다.");
   }
 
-  const data = await response.json();
-  const chartData = data.fear_and_greed_historical?.data ?? data.fear_and_greed_historical ?? [];
-  const points = chartData
-    .map((point) => {
-      const rawDate = point.x ?? point.timestamp ?? point.date;
-      const rawValue = point.y ?? point.value ?? point.score;
-      const date = Number(rawDate) > 10000000000 ? Number(rawDate) : Number(rawDate) * 1000;
-      const value = Number(rawValue);
-      return Number.isFinite(date) && Number.isFinite(value) ? { date, value } : null;
-    })
-    .filter(Boolean)
-    .slice(-180);
+  const html = await response.text();
+  const match = html.match(
+    /current value of the Fear & Greed Index as of ([^<]+?) is[\s\S]*?<strong>(\d+)<\/strong>\s*\(([^)]+)\)/i,
+  );
 
-  if (points.length < 2) {
-    throw new Error("Fear & Greed 차트 데이터가 부족합니다.");
+  if (!match) {
+    throw new Error("Fear & Greed 현재값을 파싱하지 못했습니다.");
   }
 
-  return { points, previous: points.at(-2).value };
+  return {
+    display: "gauge",
+    value: Number(match[2]),
+    rating: match[3],
+    asOf: match[1],
+    source: "FinHacker",
+  };
 }
 
 module.exports = async function handler(req, res) {

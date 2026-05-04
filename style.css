@@ -98,7 +98,7 @@ h1 {
   overflow: hidden;
   border: 1px solid #1f2937;
   border-radius: 8px;
-  background: #111827;
+  background: #0f1622;
 }
 
 .card-head {
@@ -144,6 +144,7 @@ h1 {
   flex: 1;
   min-height: 0;
   padding: 14px;
+  background: #05070a;
 }
 
 .market-chart svg {
@@ -163,6 +164,9 @@ h1 {
   left: 18px;
   top: 14px;
   z-index: 1;
+  padding: 7px 9px;
+  border-radius: 6px;
+  background: rgba(5, 7, 10, 0.72);
 }
 
 .quote-price {
@@ -191,6 +195,49 @@ h1 {
 
 .fallback-link {
   color: #38bdf8;
+}
+
+.gauge-wrap {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  position: relative;
+  text-align: center;
+}
+
+.gauge-wrap svg {
+  width: min(88%, 430px);
+  height: auto;
+  margin-top: 6px;
+}
+
+.gauge-value {
+  position: absolute;
+  top: 52%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #f8fafc;
+  font-size: 48px;
+  font-weight: 900;
+}
+
+.gauge-rating {
+  position: absolute;
+  top: 68%;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #d1d5db;
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.gauge-source {
+  position: absolute;
+  bottom: 16px;
+  left: 0;
+  right: 0;
+  color: #9ca3af;
+  font-size: 12px;
 }
 
 @media (max-width: 900px) {
