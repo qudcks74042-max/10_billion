@@ -10,10 +10,42 @@ body {
   background: #0b0f14;
 }
 
+.sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: 104px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px 10px;
+  border-right: 1px solid #1f2937;
+  background: #070b10;
+  z-index: 10;
+}
+
+.nav-button {
+  width: 84px;
+  min-height: 42px;
+  border: 1px solid #263244;
+  border-radius: 8px;
+  color: #cbd5e1;
+  background: #111827;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.nav-button:hover,
+.nav-button.active {
+  color: #f8fafc;
+  border-color: #0f766e;
+  background: #0f766e;
+}
+
 .dashboard {
   width: min(1800px, 100%);
   margin: 0 auto;
-  padding: 22px;
+  padding: 22px 22px 22px 126px;
 }
 
 .dashboard-header {
@@ -45,8 +77,15 @@ h1 {
   white-space: nowrap;
 }
 
-.chart-grid {
+.market-view {
+  display: none;
+}
+
+.market-view.active {
   display: grid;
+}
+
+.chart-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
 }
@@ -100,32 +139,20 @@ h1 {
   text-align: center;
 }
 
-.market-chart,
-.fear-chart {
-  flex: 1;
-  min-height: 0;
-}
-
 .market-chart {
   position: relative;
+  flex: 1;
+  min-height: 0;
   padding: 14px;
 }
 
-.market-chart svg,
-.fear-chart svg {
+.market-chart svg {
   width: 100%;
   height: 100%;
   display: block;
 }
 
-.fear-chart {
-  position: relative;
-  padding: 14px;
-  color: #d1d5db;
-}
-
-.market-chart p,
-.fear-chart p {
+.market-chart p {
   margin: 0;
   color: #9ca3af;
   font-size: 14px;
@@ -162,32 +189,26 @@ h1 {
   color: #d1d5db;
 }
 
-.fear-meta {
-  position: absolute;
-  left: 20px;
-  top: 16px;
-  display: flex;
-  gap: 10px;
-  align-items: baseline;
-}
-
-.fear-value {
-  color: #f9fafb;
-  font-size: 42px;
-  font-weight: 800;
-}
-
-.fear-rating {
-  color: #9ca3af;
-  font-size: 15px;
-  font-weight: 700;
-}
-
 .fallback-link {
   color: #38bdf8;
 }
 
 @media (max-width: 900px) {
+  .sidebar {
+    position: sticky;
+    inset: 0 0 auto 0;
+    width: 100%;
+    flex-direction: row;
+    padding: 10px;
+    border-right: 0;
+    border-bottom: 1px solid #1f2937;
+  }
+
+  .nav-button {
+    flex: 1;
+    width: auto;
+  }
+
   .dashboard {
     padding: 14px;
   }

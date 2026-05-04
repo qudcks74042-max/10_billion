@@ -3,132 +3,26 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Global Market Live Charts</title>
+  <title>Market Dashboard</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <aside class="sidebar" aria-label="시장 선택">
+    <button class="nav-button active" type="button" data-market="us">미국장</button>
+    <button class="nav-button" type="button" data-market="kr">한국장</button>
+  </aside>
+
   <main class="dashboard">
     <header class="dashboard-header">
       <div>
-        <p class="eyebrow">Live Market Board</p>
-        <h1>주요 시장 실시간 차트</h1>
+        <p class="eyebrow" id="market-eyebrow">US Market</p>
+        <h1 id="market-title">미국장 주요 지표</h1>
       </div>
       <p id="updated-at" class="updated">차트 로딩 중</p>
     </header>
 
-    <section class="chart-grid" aria-label="실시간 시장 차트">
-      <article class="chart-card">
-        <div class="card-head">
-          <div>
-            <p>Dow Jones</p>
-            <h2>다우존스</h2>
-          </div>
-          <span>DJI</span>
-        </div>
-        <div class="market-chart" data-symbol="^DJI" data-kind="yahoo"></div>
-      </article>
-
-      <article class="chart-card">
-        <div class="card-head">
-          <div>
-            <p>Nasdaq Composite</p>
-            <h2>나스닥</h2>
-          </div>
-          <span>IXIC</span>
-        </div>
-        <div class="market-chart" data-symbol="^IXIC" data-kind="yahoo"></div>
-      </article>
-
-      <article class="chart-card">
-        <div class="card-head">
-          <div>
-            <p>S&P 500</p>
-            <h2>S&P 500</h2>
-          </div>
-          <span>SPX</span>
-        </div>
-        <div class="market-chart" data-symbol="^GSPC" data-kind="yahoo"></div>
-      </article>
-
-      <article class="chart-card">
-        <div class="card-head">
-          <div>
-            <p>CBOE Volatility Index</p>
-            <h2>VIX 지수</h2>
-          </div>
-          <span>VIX</span>
-        </div>
-        <div class="market-chart" data-symbol="^VIX" data-kind="yahoo"></div>
-      </article>
-
-      <article class="chart-card">
-        <div class="card-head">
-          <div>
-            <p>CNN Market Sentiment</p>
-            <h2>Fear & Greed</h2>
-          </div>
-          <span id="fear-greed-score">--</span>
-        </div>
-        <div id="fear-greed-chart" class="fear-chart">
-          <p>Fear & Greed 데이터 로딩 중</p>
-        </div>
-      </article>
-
-      <article class="chart-card">
-        <div class="card-head">
-          <div>
-            <p>Gold Spot</p>
-            <h2>금</h2>
-          </div>
-          <span>XAU</span>
-        </div>
-        <div class="market-chart" data-symbol="GC=F" data-kind="yahoo"></div>
-      </article>
-
-      <article class="chart-card">
-        <div class="card-head">
-          <div>
-            <p>Silver Spot</p>
-            <h2>은</h2>
-          </div>
-          <span>XAG</span>
-        </div>
-        <div class="market-chart" data-symbol="SI=F" data-kind="yahoo"></div>
-      </article>
-
-      <article class="chart-card">
-        <div class="card-head">
-          <div>
-            <p>Copper Futures</p>
-            <h2>구리</h2>
-          </div>
-          <span>HG</span>
-        </div>
-        <div class="market-chart" data-symbol="HG=F" data-kind="yahoo"></div>
-      </article>
-
-      <article class="chart-card">
-        <div class="card-head">
-          <div>
-            <p>WTI Crude Oil</p>
-            <h2>유가</h2>
-          </div>
-          <span>CL</span>
-        </div>
-        <div class="market-chart" data-symbol="CL=F" data-kind="yahoo"></div>
-      </article>
-
-      <article class="chart-card">
-        <div class="card-head">
-          <div>
-            <p>Federal Funds Rate</p>
-            <h2>미국 기준금리</h2>
-          </div>
-          <span>FED</span>
-        </div>
-        <div class="market-chart" data-symbol="FEDFUNDS" data-kind="fred"></div>
-      </article>
-    </section>
+    <section id="us-view" class="chart-grid market-view active" aria-label="미국장 차트"></section>
+    <section id="kr-view" class="chart-grid market-view" aria-label="한국장 차트"></section>
   </main>
 
   <script src="script.js"></script>
