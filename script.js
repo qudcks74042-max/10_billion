@@ -12,31 +12,22 @@ const tradingViewOptions = {
 
 function createTradingViewChart(container) {
   const symbol = container.dataset.symbol;
-  const params = new URLSearchParams({
+  const widget = document.createElement("div");
+  const chartTarget = document.createElement("div");
+  const script = document.createElement("script");
+
+  widget.className = "tradingview-widget-container";
+  chartTarget.className = "tradingview-widget-container__widget";
+  script.type = "text/javascript";
+  script.async = true;
+  script.src = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
+  script.innerHTML = JSON.stringify({
+    ...tradingViewOptions,
     symbol,
-    interval: tradingViewOptions.interval,
-    timezone: tradingViewOptions.timezone,
-    theme: tradingViewOptions.theme,
-    style: tradingViewOptions.style,
-    locale: tradingViewOptions.locale,
-    allow_symbol_change: tradingViewOptions.allow_symbol_change ? "1" : "0",
-    calendar: tradingViewOptions.calendar ? "1" : "0",
-    hide_side_toolbar: "0",
-    hide_top_toolbar: "0",
-    save_image: "0",
-    studies: "[]",
-    withdateranges: "1",
-    details: "0",
-    hotlist: "0",
   });
-  const iframe = document.createElement("iframe");
 
-  iframe.title = `${symbol} live chart`;
-  iframe.src = `https://s.tradingview.com/widgetembed/?${params.toString()}`;
-  iframe.loading = "lazy";
-  iframe.allowFullscreen = true;
-
-  container.appendChild(iframe);
+  widget.append(chartTarget, script);
+  container.appendChild(widget);
 }
 
 function normalizeFearGreedPoint(point) {
