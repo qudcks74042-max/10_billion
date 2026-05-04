@@ -3,38 +3,131 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Market Watch</title>
+  <title>Global Market Live Charts</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <main class="page">
-    <section class="ticker ticker-left" aria-label="Nasdaq 100">
+  <main class="dashboard">
+    <header class="dashboard-header">
       <div>
-        <p class="label">NASDAQ 100</p>
-        <h1 id="nasdaq-price">불러오는 중</h1>
-        <p id="nasdaq-change" class="change">-</p>
+        <p class="eyebrow">Live Market Board</p>
+        <h1>주요 시장 실시간 차트</h1>
       </div>
-      <span class="badge">NDX</span>
-    </section>
+      <p id="updated-at" class="updated">차트 로딩 중</p>
+    </header>
 
-    <section class="ticker ticker-right" aria-label="VIX">
-      <div>
-        <p class="label">VIX 지수</p>
-        <h1 id="vix-price">불러오는 중</h1>
-        <p id="vix-change" class="change">-</p>
-      </div>
-      <span class="badge">VIX</span>
-    </section>
+    <section class="chart-grid" aria-label="실시간 시장 차트">
+      <article class="chart-card">
+        <div class="card-head">
+          <div>
+            <p>Dow Jones</p>
+            <h2>다우존스</h2>
+          </div>
+          <span>DJI</span>
+        </div>
+        <div class="tv-chart" data-symbol="TVC:DJI"></div>
+      </article>
 
-    <section class="center-panel">
-      <p class="eyebrow">Live Market Dashboard</p>
-      <h2>나스닥 100과 VIX를 한 화면에서 확인</h2>
-      <p class="description">
-        데이터는 Yahoo Finance 공개 차트 엔드포인트에서 가져옵니다.
-        시장 휴장일에는 마지막 거래일 기준으로 표시됩니다.
-      </p>
-      <button id="refresh-button" type="button">새로고침</button>
-      <p id="updated-at" class="updated">업데이트 대기 중</p>
+      <article class="chart-card">
+        <div class="card-head">
+          <div>
+            <p>Nasdaq Composite</p>
+            <h2>나스닥</h2>
+          </div>
+          <span>IXIC</span>
+        </div>
+        <div class="tv-chart" data-symbol="NASDAQ:IXIC"></div>
+      </article>
+
+      <article class="chart-card">
+        <div class="card-head">
+          <div>
+            <p>S&P 500</p>
+            <h2>S&P 500</h2>
+          </div>
+          <span>SPX</span>
+        </div>
+        <div class="tv-chart" data-symbol="TVC:SPX"></div>
+      </article>
+
+      <article class="chart-card">
+        <div class="card-head">
+          <div>
+            <p>CBOE Volatility Index</p>
+            <h2>VIX 지수</h2>
+          </div>
+          <span>VIX</span>
+        </div>
+        <div class="tv-chart" data-symbol="CBOE:VIX"></div>
+      </article>
+
+      <article class="chart-card">
+        <div class="card-head">
+          <div>
+            <p>CNN Market Sentiment</p>
+            <h2>Fear & Greed</h2>
+          </div>
+          <span id="fear-greed-score">--</span>
+        </div>
+        <div id="fear-greed-chart" class="fear-chart">
+          <p>Fear & Greed 데이터 로딩 중</p>
+        </div>
+      </article>
+
+      <article class="chart-card">
+        <div class="card-head">
+          <div>
+            <p>Gold Spot</p>
+            <h2>금</h2>
+          </div>
+          <span>XAU</span>
+        </div>
+        <div class="tv-chart" data-symbol="OANDA:XAUUSD"></div>
+      </article>
+
+      <article class="chart-card">
+        <div class="card-head">
+          <div>
+            <p>Silver Spot</p>
+            <h2>은</h2>
+          </div>
+          <span>XAG</span>
+        </div>
+        <div class="tv-chart" data-symbol="OANDA:XAGUSD"></div>
+      </article>
+
+      <article class="chart-card">
+        <div class="card-head">
+          <div>
+            <p>Copper Futures</p>
+            <h2>구리</h2>
+          </div>
+          <span>HG</span>
+        </div>
+        <div class="tv-chart" data-symbol="COMEX:HG1!"></div>
+      </article>
+
+      <article class="chart-card">
+        <div class="card-head">
+          <div>
+            <p>WTI Crude Oil</p>
+            <h2>유가</h2>
+          </div>
+          <span>CL</span>
+        </div>
+        <div class="tv-chart" data-symbol="NYMEX:CL1!"></div>
+      </article>
+
+      <article class="chart-card">
+        <div class="card-head">
+          <div>
+            <p>Federal Funds Rate</p>
+            <h2>미국 기준금리</h2>
+          </div>
+          <span>FED</span>
+        </div>
+        <div class="tv-chart" data-symbol="FRED:FEDFUNDS"></div>
+      </article>
     </section>
   </main>
 

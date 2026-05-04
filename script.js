@@ -1,89 +1,132 @@
-const symbols = {
-  nasdaq: {
-    symbol: "^NDX",
-    priceId: "nasdaq-price",
-    changeId: "nasdaq-change",
-  },
-  vix: {
-    symbol: "^VIX",
-    priceId: "vix-price",
-    changeId: "vix-change",
-  },
+const tradingViewOptions = {
+  autosize: true,
+  interval: "60",
+  timezone: "Asia/Seoul",
+  theme: "dark",
+  style: "1",
+  locale: "kr",
+  allow_symbol_change: true,
+  calendar: false,
+  support_host: "https://www.tradingview.com",
 };
 
-const formatNumber = new Intl.NumberFormat("en-US", {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
+function createTradingViewChart(container) {
+  const symbol = container.dataset.symbol;
+  const script = document.createElement("script");
 
-async function fetchQuote(symbol) {
-  const encoded = encodeURIComponent(symbol);
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encoded}?range=5d&interval=1d`;
-  const response = await fetch(url);
+  script.type = "text/javascript";
+  script.async = true;
+  script.src = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
+  script.textContent = JSON.stringify({
+    ...tradingViewOptions,
+    symbol,
+  });
+
+  container.appendChild(script);
+}
+
+function normalizeFearGreedPoint(point) {
+  const rawDate = point.x ?? point.timestamp ?? point.date;
+  const rawValue = point.y ?? point.value ?? point.score;
+  const date = Number(rawDate) > 10000000000 ? Number(rawDate) : Number(rawDate) * 1000;
+  const value = Number(rawValue);
+
+  if (!Number.isFinite(date) || !Number.isFinite(value)) {
+    return null;
+  }
+
+  return { date, value };
+}
+
+function buildFearGreedSvg(points) {
+  const width = 760;
+  const height = 250;
+  const padding = 28;
+  const usableWidth = width - padding * 2;
+  const usableHeight = height - padding * 2;
+  const values = points.map((point) => point.value);
+  const minDate = Math.min(...points.map((point) => point.date));
+  const maxDate = Math.max(...points.map((point) => point.date));
+
+  const path = points
+    .map((point, index) => {
+      const x = padding + ((point.date - minDate) / (maxDate - minDate || 1)) * usableWidth;
+      const y = height - padding - (point.value / 100) * usableHeight;
+      return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
+    })
+    .join(" ");
+
+  const latest = values[values.length - 1];
+  const rating = getFearGreedRating(latest);
+
+  return `
+    <div class="fear-meta">
+      <span class="fear-value">${Math.round(latest)}</span>
+      <span class="fear-rating">${rating}</span>
+    </div>
+    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Fear and Greed Index chart">
+      <defs>
+        <linearGradient id="fearFill" x1="0" x2="1" y1="0" y2="0">
+          <stop offset="0%" stop-color="#ef4444" />
+          <stop offset="50%" stop-color="#eab308" />
+          <stop offset="100%" stop-color="#22c55e" />
+        </linearGradient>
+      </defs>
+      <line x1="${padding}" y1="${height - padding}" x2="${width - padding}" y2="${height - padding}" stroke="#334155" />
+      <line x1="${padding}" y1="${padding}" x2="${padding}" y2="${height - padding}" stroke="#334155" />
+      <line x1="${padding}" y1="${height - padding - usableHeight * 0.25}" x2="${width - padding}" y2="${height - padding - usableHeight * 0.25}" stroke="#1f2937" />
+      <line x1="${padding}" y1="${height - padding - usableHeight * 0.5}" x2="${width - padding}" y2="${height - padding - usableHeight * 0.5}" stroke="#1f2937" />
+      <line x1="${padding}" y1="${height - padding - usableHeight * 0.75}" x2="${width - padding}" y2="${height - padding - usableHeight * 0.75}" stroke="#1f2937" />
+      <path d="${path}" fill="none" stroke="url(#fearFill)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+    </svg>
+  `;
+}
+
+function getFearGreedRating(value) {
+  if (value <= 24) return "Extreme Fear";
+  if (value <= 49) return "Fear";
+  if (value <= 50) return "Neutral";
+  if (value <= 74) return "Greed";
+  return "Extreme Greed";
+}
+
+async function loadFearGreedChart() {
+  const container = document.getElementById("fear-greed-chart");
+  const score = document.getElementById("fear-greed-score");
+  const response = await fetch("https://production.dataviz.cnn.io/index/fearandgreed/graphdata");
 
   if (!response.ok) {
-    throw new Error(`데이터 요청 실패: ${response.status}`);
+    throw new Error("Fear & Greed 데이터를 불러오지 못했습니다.");
   }
 
-  const payload = await response.json();
-  const result = payload.chart?.result?.[0];
-  const quote = result?.indicators?.quote?.[0];
-  const closes = quote?.close?.filter((value) => typeof value === "number");
+  const data = await response.json();
+  const chartData = data.fear_and_greed_historical?.data ?? data.fear_and_greed_historical ?? [];
+  const points = chartData.map(normalizeFearGreedPoint).filter(Boolean).slice(-180);
+  const currentScore = Number(data.fear_and_greed?.score ?? points.at(-1)?.value);
 
-  if (!closes || closes.length === 0) {
-    throw new Error("가격 데이터가 없습니다.");
+  if (points.length < 2 || !Number.isFinite(currentScore)) {
+    throw new Error("Fear & Greed 차트 데이터 형식이 변경되었습니다.");
   }
 
-  const price = closes[closes.length - 1];
-  const previous = closes.length >= 2 ? closes[closes.length - 2] : price;
-  const change = price - previous;
-  const changePercent = previous === 0 ? 0 : (change / previous) * 100;
-
-  return { price, change, changePercent };
+  container.innerHTML = buildFearGreedSvg(points);
+  score.textContent = String(Math.round(currentScore));
 }
 
-function renderQuote(config, quote) {
-  const priceEl = document.getElementById(config.priceId);
-  const changeEl = document.getElementById(config.changeId);
-  const sign = quote.change > 0 ? "+" : "";
-
-  priceEl.textContent = formatNumber.format(quote.price);
-  changeEl.textContent = `${sign}${formatNumber.format(quote.change)} (${sign}${quote.changePercent.toFixed(2)}%)`;
-  changeEl.className = "change";
-
-  if (quote.change > 0) {
-    changeEl.classList.add("up");
-  } else if (quote.change < 0) {
-    changeEl.classList.add("down");
-  } else {
-    changeEl.classList.add("flat");
-  }
+function renderFearGreedFallback(error) {
+  const container = document.getElementById("fear-greed-chart");
+  container.innerHTML = `
+    <p>${error.message}</p>
+    <p>
+      <a class="fallback-link" href="https://www.cnn.com/markets/fear-and-greed" target="_blank" rel="noreferrer">
+        CNN Fear & Greed 원문 보기
+      </a>
+    </p>
+  `;
 }
 
-function renderError(config, message) {
-  document.getElementById(config.priceId).textContent = "오류";
-  const changeEl = document.getElementById(config.changeId);
-  changeEl.textContent = message;
-  changeEl.className = "change flat";
-}
+document.querySelectorAll(".tv-chart").forEach(createTradingViewChart);
 
-async function refresh() {
-  const updatedAt = document.getElementById("updated-at");
-  updatedAt.textContent = "데이터 불러오는 중...";
+loadFearGreedChart().catch(renderFearGreedFallback);
 
-  await Promise.all(
-    Object.values(symbols).map(async (config) => {
-      try {
-        const quote = await fetchQuote(config.symbol);
-        renderQuote(config, quote);
-      } catch (error) {
-        renderError(config, error.message || "데이터를 불러오지 못했습니다.");
-      }
-    }),
-  );
-
-  updatedAt.textContent = `마지막 업데이트: ${new Date().toLocaleString("ko-KR")}`;
-}
-
-document.getElementById("refresh-button").addEventListener("click", refresh);
-refresh();
+document.getElementById("updated-at").textContent =
+  `마지막 로드: ${new Date().toLocaleString("ko-KR")}`;
