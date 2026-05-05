@@ -49,6 +49,7 @@ const chartPeriods = [
 ];
 const coinSymbols = ["KRW-BTC", "KRW-ETH"];
 const coinNames = { "KRW-BTC": "비트코인", "KRW-ETH": "이더리움" };
+const usSignalSymbols = ["NVDA", "MSFT", "AAPL", "AMZN", "META", "GOOGL", "TSLA", "AVGO", "AMD", "QQQ", "SPY"];
 const numberFormat = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
 const krwFormat = new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 0 });
 const percentFormat = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 2 });
@@ -134,12 +135,32 @@ function buildCryptoView() {
   `;
 }
 
+function buildUsStockPanel() {
+  const view = document.getElementById("us-view");
+  const panel = document.createElement("section");
+  panel.className = "stock-signal-panel";
+  panel.innerHTML = `
+    <div class="stock-signal-head">
+      <div>
+        <span class="mini-label">US Stock Scanner</span>
+        <h2>미장 롱 후보</h2>
+      </div>
+      <button id="refresh-us-signals" class="range-button" type="button">갱신</button>
+    </div>
+    <div id="us-stock-signals" class="stock-signal-grid">
+      <p>종목 스캔 중</p>
+    </div>
+  `;
+  view.prepend(panel);
+}
+
 function buildViews() {
   Object.values(markets).forEach((market) => {
     if (market.type === "charts") {
       document.getElementById(market.target).replaceChildren(...market.cards.map(createCard));
     }
   });
+  buildUsStockPanel();
   buildCryptoView();
 }
 
@@ -280,6 +301,54 @@ function addCoinLog(symbol, text) {
   while (list.children.length > 5) list.lastElementChild.remove();
 }
 
+function renderUsStockSignals(data) {
+  const wrap = document.getElementById("us-stock-signals");
+  if (!wrap) return;
+  const items = data.candidates || [];
+  if (!items.length) {
+    wrap.innerHTML = "<p>조건에 맞는 후보가 없습니다.</p>";
+    return;
+  }
+  wrap.innerHTML = items.map((item) => `
+    <article class="stock-signal-card ${item.tone}">
+      <div class="stock-card-head">
+        <div>
+          <span class="mini-label">${item.symbol}</span>
+          <h3>${item.name}</h3>
+        </div>
+        <strong>${item.score}점</strong>
+      </div>
+      <div class="stock-price-row">
+        <strong>$${numberFormat.format(item.lastPrice)}</strong>
+        <span>${formatSignedPercent(item.changePercent)} / 5일</span>
+      </div>
+      <div class="stock-levels">
+        <div><span class="mini-label">후보 진입</span><strong>$${numberFormat.format(item.entryLow)} - $${numberFormat.format(item.entryHigh)}</strong></div>
+        <div><span class="mini-label">무효화</span><strong>$${numberFormat.format(item.stop)}</strong></div>
+        <div><span class="mini-label">부분익절</span><strong>$${numberFormat.format(item.takeProfit)}</strong></div>
+      </div>
+      <p>${item.reason}</p>
+      <small>${item.notes.join(" · ") || "조건 부족"}</small>
+    </article>
+  `).join("");
+}
+
+async function loadUsStockSignals(force = false) {
+  const view = document.getElementById("us-view");
+  if (!view.classList.contains("active")) return;
+  const now = Date.now();
+  if (!force && view.dataset.signalLoadedAt && now - Number(view.dataset.signalLoadedAt) < 60_000) return;
+  view.dataset.signalLoadedAt = String(now);
+  const wrap = document.getElementById("us-stock-signals");
+  if (wrap) wrap.innerHTML = "<p>종목 스캔 중</p>";
+  try {
+    const data = await fetchSeries("us-stock-signals", usSignalSymbols.join(","), "day");
+    renderUsStockSignals(data);
+  } catch (error) {
+    if (wrap) wrap.innerHTML = `<p>${error.message}</p>`;
+  }
+}
+
 function renderCoinChart(id, data) {
   const container = document.getElementById(`${id}-chart`);
   if (!container || !data.chartPoints?.length) return;
@@ -359,8 +428,12 @@ function switchMarket(marketKey) {
   document.getElementById("market-title").textContent = market.title;
   document.getElementById("updated-at").textContent = `마지막 로드: ${new Date().toLocaleString("ko-KR")}`;
 
-  if (market.type === "crypto") loadCryptoSignals(true);
-  else loadVisibleCharts();
+  if (market.type === "crypto") {
+    loadCryptoSignals(true);
+  } else {
+    loadVisibleCharts();
+    if (marketKey === "us") loadUsStockSignals(true);
+  }
 }
 
 buildViews();
@@ -384,6 +457,9 @@ document.addEventListener("click", (event) => {
     panel.dataset.period = period;
     loadCoinSignal(panel, true);
   }
+});
+document.addEventListener("click", (event) => {
+  if (event.target.id === "refresh-us-signals") loadUsStockSignals(true);
 });
 switchMarket("us");
 setInterval(() => loadCryptoSignals(false), 5000);

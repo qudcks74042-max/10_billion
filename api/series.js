@@ -1,4 +1,18 @@
 const yahooSymbols = new Set(["^DJI", "^IXIC", "^GSPC", "^VIX", "GC=F", "SI=F", "HG=F", "CL=F", "^KS11", "^KQ11"]);
+const usStockUniverse = new Set(["NVDA", "MSFT", "AAPL", "AMZN", "META", "GOOGL", "TSLA", "AVGO", "AMD", "QQQ", "SPY"]);
+const usStockNames = {
+  NVDA: "NVIDIA",
+  MSFT: "Microsoft",
+  AAPL: "Apple",
+  AMZN: "Amazon",
+  META: "Meta",
+  GOOGL: "Alphabet",
+  TSLA: "Tesla",
+  AVGO: "Broadcom",
+  AMD: "AMD",
+  QQQ: "Nasdaq 100 ETF",
+  SPY: "S&P 500 ETF",
+};
 const cryptoMarkets = {
   "KRW-BTC": { name: "비트코인", binance: "BTCUSDT" },
   "KRW-ETH": { name: "이더리움", binance: "ETHUSDT" },
@@ -291,6 +305,137 @@ function analyzeCryptoFrame(candles) {
   };
 }
 
+function analyzeStockCandles(symbol, candles) {
+  const closes = candles.map((candle) => candle.close);
+  const last = closes.at(-1);
+  const previous = closes.at(-6) || closes.at(-2);
+  const ema20 = ema(closes.slice(-80), 20);
+  const ema50 = ema(closes.slice(-120), 50);
+  const average20 = sma(closes, 20);
+  const currentRsi = rsi(closes, 14);
+  const currentAtr = atr(candles, 14) || last * 0.025;
+  const high20 = Math.max(...candles.slice(-21, -1).map((candle) => candle.high));
+  const low10 = Math.min(...candles.slice(-10).map((candle) => candle.low));
+  const changePercent = previous ? ((last - previous) / previous) * 100 : 0;
+  let score = 0;
+  const notes = [];
+
+  if (ema20 && ema50 && ema20 > ema50) {
+    score += 25;
+    notes.push("EMA20 > EMA50");
+  }
+  if (ema20 && last > ema20) {
+    score += 18;
+    notes.push("EMA20 상단");
+  }
+  if (average20 && last > average20) {
+    score += 14;
+    notes.push("20일 평균 상단");
+  }
+  if (currentRsi && currentRsi >= 45 && currentRsi <= 70) {
+    score += 16;
+    notes.push(`RSI ${currentRsi.toFixed(0)}`);
+  }
+  if (last > high20) {
+    score += 17;
+    notes.push("20일 고가 돌파");
+  }
+  if (changePercent > 0 && changePercent < 8) {
+    score += 10;
+    notes.push("5일 양봉 흐름");
+  }
+
+  score = Math.max(0, Math.min(100, Math.round(score)));
+  const pullback = Math.max(ema20 || last, average20 || last);
+  const entryLow = Math.min(last, pullback + currentAtr * 0.15);
+  const entryHigh = Math.max(last, pullback + currentAtr * 0.45);
+  const stop = Math.min(low10, (ema20 || last) - currentAtr * 0.7);
+  const takeProfit = entryHigh + currentAtr * 1.35;
+  const tone = score >= 72 ? "long" : score >= 55 ? "wait" : "avoid";
+  const reason =
+    score >= 72
+      ? "추세와 돌파 조건이 강한 롱 후보입니다."
+      : score >= 55
+        ? "관심 후보지만 진입은 눌림 확인이 필요합니다."
+        : "추세 조건이 부족해 관망 우선입니다.";
+
+  return {
+    symbol,
+    name: usStockNames[symbol] || symbol,
+    score,
+    tone,
+    reason,
+    notes,
+    lastPrice: last,
+    changePercent,
+    entryLow,
+    entryHigh,
+    stop,
+    takeProfit,
+  };
+}
+
+async function fetchStockCandles(symbol) {
+  if (!usStockUniverse.has(symbol)) throw new Error(`${symbol}은 스캔 대상이 아닙니다.`);
+  const response = await fetch(
+    `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=6mo&interval=1d`,
+    { headers: { "User-Agent": "Mozilla/5.0" } },
+  );
+  if (!response.ok) throw new Error(`${symbol} 데이터를 불러오지 못했습니다.`);
+  const result = (await response.json()).chart?.result?.[0];
+  const quote = result?.indicators?.quote?.[0] || {};
+  const timestamps = result?.timestamp || [];
+  const candles = timestamps
+    .map((time, index) => ({
+      date: time * 1000,
+      open: Number(quote.open?.[index]),
+      high: Number(quote.high?.[index]),
+      low: Number(quote.low?.[index]),
+      close: Number(quote.close?.[index]),
+      volume: Number(quote.volume?.[index] || 0),
+    }))
+    .filter((candle) =>
+      Number.isFinite(candle.date) &&
+      Number.isFinite(candle.open) &&
+      Number.isFinite(candle.high) &&
+      Number.isFinite(candle.low) &&
+      Number.isFinite(candle.close) &&
+      candle.open > 0 &&
+      candle.high > 0 &&
+      candle.low > 0 &&
+      candle.close > 0,
+    );
+  if (candles.length < 60) throw new Error(`${symbol} 분석 데이터가 부족합니다.`);
+  return candles;
+}
+
+async function fetchUsStockSignals(symbols) {
+  const requested = String(symbols || "")
+    .split(",")
+    .map((symbol) => symbol.trim().toUpperCase())
+    .filter(Boolean)
+    .filter((symbol) => usStockUniverse.has(symbol))
+    .slice(0, 12);
+  const targetSymbols = requested.length ? requested : [...usStockUniverse];
+  const candidates = [];
+
+  for (const symbol of targetSymbols) {
+    try {
+      const candles = await fetchStockCandles(symbol);
+      candidates.push(analyzeStockCandles(symbol, candles));
+    } catch {
+      // Keep the scanner usable if one quote request fails.
+    }
+    await sleep(80);
+  }
+
+  candidates.sort((a, b) => b.score - a.score);
+  return {
+    asOf: new Date().toISOString(),
+    candidates: candidates.slice(0, 6),
+  };
+}
+
 function calculateOrderbookBias(orderbook) {
   const units = orderbook.orderbook_units.slice(0, 8);
   const bid = units.reduce((sum, unit) => sum + unit.bid_size, 0);
@@ -450,6 +595,10 @@ module.exports = async function handler(req, res) {
     }
     if (source === "feargreed") {
       send(res, 200, await fetchFearGreed());
+      return;
+    }
+    if (source === "us-stock-signals") {
+      send(res, 200, await fetchUsStockSignals(symbol), "application/json; charset=utf-8", "no-store");
       return;
     }
     if (source === "upbit-crypto-signal") {
