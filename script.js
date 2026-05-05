@@ -24,25 +24,25 @@ const markets = {
     type: "charts",
     cards: [
       ["KOSPI Composite", "코스피", "KOSPI", "yahoo", "^KS11"],
-      ["KOSDAQ Composite", "코스닥", "KOSDAQ", "yahoo", "^KQ11"],
+      ["KOSDAQ Composite", "코스닥", "KOSDAQ", "^KQ11"],
       ["KOSPI Foreign Net Buying", "외국인 순매수", "외국인", "naver-flow", "foreign"],
       ["KOSPI Institution Net Buying", "기관 순매수", "기관", "naver-flow", "institution"],
     ],
   },
   btc: {
-    eyebrow: "Bitcoin Scalping",
-    title: "비트코인 롱 단타 위치",
+    eyebrow: "Crypto Scalping",
+    title: "비트코인 · 이더리움 롱 단타 위치",
     target: "btc-view",
-    type: "btc",
+    type: "crypto",
   },
 };
 
+markets.kr.cards[1] = ["KOSDAQ Composite", "코스닥", "KOSDAQ", "yahoo", "^KQ11"];
+
+const coinSymbols = ["KRW-BTC", "KRW-ETH"];
 const numberFormat = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
 const krwFormat = new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 0 });
-const percentFormat = new Intl.NumberFormat("en-US", {
-  maximumFractionDigits: 2,
-  minimumFractionDigits: 2,
-});
+const percentFormat = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 2 });
 
 function createCard([subtitle, title, badge, source, symbol]) {
   const card = document.createElement("article");
@@ -62,62 +62,56 @@ function createCard([subtitle, title, badge, source, symbol]) {
   return card;
 }
 
-function buildBtcView() {
+function coinId(symbol) {
+  return symbol.replace("KRW-", "").toLowerCase();
+}
+
+function buildCryptoView() {
   const view = document.getElementById("btc-view");
   view.innerHTML = `
-    <div class="btc-signal-panel">
-      <div class="btc-price-card">
-        <span class="mini-label">KRW-BTC 현재가</span>
-        <strong id="btc-last-price">-</strong>
-        <p id="btc-price-change">-</p>
-      </div>
-      <div class="btc-verdict-card" id="btc-verdict-card">
-        <span class="mini-label">롱 신호</span>
-        <strong id="btc-verdict">대기</strong>
-        <p id="btc-reason">데이터 로딩 중</p>
-      </div>
-      <div class="btc-score-card">
-        <span class="mini-label">종합 점수</span>
-        <div class="score-line"><div id="btc-score-bar"></div></div>
-        <strong id="btc-score">0 / 100</strong>
-      </div>
-    </div>
-    <div class="btc-trade-grid">
-      <article>
-        <span class="mini-label">후보 진입</span>
-        <strong id="btc-entry">-</strong>
-        <p>급등 추격보다 VWAP/EMA 근처 재돌파를 우선합니다.</p>
-      </article>
-      <article>
-        <span class="mini-label">무효화</span>
-        <strong id="btc-stop">-</strong>
-        <p>종가 이탈 시 롱 시나리오를 다시 계산합니다.</p>
-      </article>
-      <article>
-        <span class="mini-label">부분익절</span>
-        <strong id="btc-take">-</strong>
-        <p>1분 ATR 기준 1차 청산 후보입니다.</p>
-      </article>
-      <article>
-        <span class="mini-label">리스크</span>
-        <strong id="btc-risk">-</strong>
-        <p>작은 손절폭이 전제입니다. 과레버리지는 계산하지 않습니다.</p>
-      </article>
-    </div>
-    <div class="btc-detail-grid">
-      <section>
-        <h2>타임프레임 체크</h2>
-        <div id="btc-timeframes" class="btc-timeframes"></div>
-      </section>
-      <section>
-        <h2>실시간 압력</h2>
-        <div class="btc-pressure">
-          <div><span class="mini-label">틱 모멘텀</span><strong id="btc-tick">-</strong></div>
-          <div><span class="mini-label">호가 매수벽</span><strong id="btc-book">-</strong></div>
-          <div><span class="mini-label">김치 프리미엄</span><strong id="btc-premium">-</strong></div>
-          <div><span class="mini-label">변동성</span><strong id="btc-volatility">-</strong></div>
-        </div>
-      </section>
+    <div id="coin-grid" class="coin-grid">
+      ${coinSymbols.map((symbol) => {
+        const id = coinId(symbol);
+        const name = symbol === "KRW-BTC" ? "비트코인" : "이더리움";
+        return `
+          <article class="coin-panel" id="${id}-panel">
+            <div class="coin-head">
+              <div>
+                <span class="mini-label">${symbol}</span>
+                <h2>${name}</h2>
+              </div>
+              <div class="coin-verdict" id="${id}-verdict-card">
+                <strong id="${id}-verdict">대기</strong>
+                <span id="${id}-score">0점</span>
+              </div>
+            </div>
+            <div class="coin-main">
+              <div>
+                <span class="mini-label">현재가</span>
+                <strong class="coin-price" id="${id}-last-price">-</strong>
+                <p id="${id}-price-change">-</p>
+              </div>
+              <div class="coin-chart" id="${id}-chart">
+                <p>차트 로딩 중</p>
+              </div>
+            </div>
+            <div class="coin-trade-grid">
+              <div><span class="mini-label">후보 진입</span><strong id="${id}-entry">-</strong></div>
+              <div><span class="mini-label">무효화</span><strong id="${id}-stop">-</strong></div>
+              <div><span class="mini-label">부분익절</span><strong id="${id}-take">-</strong></div>
+              <div><span class="mini-label">리스크</span><strong id="${id}-risk">-</strong></div>
+            </div>
+            <p class="coin-reason" id="${id}-reason">데이터 로딩 중</p>
+            <div class="coin-pressure">
+              <div><span class="mini-label">틱</span><strong id="${id}-tick">-</strong></div>
+              <div><span class="mini-label">호가</span><strong id="${id}-book">-</strong></div>
+              <div><span class="mini-label">김프</span><strong id="${id}-premium">-</strong></div>
+              <div><span class="mini-label">ATR</span><strong id="${id}-atr">-</strong></div>
+            </div>
+            <div class="coin-timeframes" id="${id}-timeframes"></div>
+          </article>
+        `;
+      }).join("")}
     </div>
     <section class="btc-log-panel">
       <h2>최근 판단</h2>
@@ -132,14 +126,12 @@ function buildViews() {
       document.getElementById(market.target).replaceChildren(...market.cards.map(createCard));
     }
   });
-  buildBtcView();
+  buildCryptoView();
 }
 
 async function fetchSeries(source, symbol) {
   const response = await fetch(`/api/series?${new URLSearchParams({ source, symbol })}`);
-  if (!response.ok) {
-    throw new Error((await response.text()) || `${symbol} 데이터를 불러오지 못했습니다.`);
-  }
+  if (!response.ok) throw new Error((await response.text()) || `${symbol} 데이터를 불러오지 못했습니다.`);
   return response.json();
 }
 
@@ -148,35 +140,26 @@ function getBounds(points) {
   const min = Math.min(...values);
   const max = Math.max(...values);
   const padding = (max - min || Math.abs(max) || 1) * 0.08;
-  return {
-    min: min - padding,
-    max: max + padding,
-    start: points[0].date,
-    end: points.at(-1).date,
-  };
+  return { min: min - padding, max: max + padding, start: points[0].date, end: points.at(-1).date };
 }
 
 function plotPoint(point, bounds, width, height, pad) {
   const x = pad + ((point.date - bounds.start) / (bounds.end - bounds.start || 1)) * (width - pad * 2);
-  const y =
-    height - pad - ((point.value - bounds.min) / (bounds.max - bounds.min || 1)) * (height - pad * 2);
+  const y = height - pad - ((point.value - bounds.min) / (bounds.max - bounds.min || 1)) * (height - pad * 2);
   return { x, y };
 }
 
 function buildLinePath(points, bounds, width, height, pad) {
-  return points
-    .map((point, index) => {
-      const { x, y } = plotPoint(point, bounds, width, height, pad);
-      return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
-    })
-    .join(" ");
+  return points.map((point, index) => {
+    const { x, y } = plotPoint(point, bounds, width, height, pad);
+    return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
+  }).join(" ");
 }
 
 function renderGauge(container, series) {
   const value = Math.round(series.value);
   const rating = series.rating || getFearGreedRating(value);
   const angle = -110 + (Math.max(0, Math.min(100, value)) / 100) * 220;
-
   container.innerHTML = `
     <div class="gauge-wrap">
       <svg viewBox="0 0 360 230" role="img" aria-label="Fear and Greed gauge">
@@ -185,16 +168,13 @@ function renderGauge(container, series) {
         <path d="M118 76 A120 120 0 0 1 180 60" fill="none" stroke="#f59e0b" stroke-width="24" />
         <path d="M180 60 A120 120 0 0 1 242 76" fill="none" stroke="#eab308" stroke-width="24" />
         <path d="M242 76 A120 120 0 0 1 300 180" fill="none" stroke="#22c55e" stroke-width="24" stroke-linecap="round" />
-        <g transform="translate(180 180) rotate(${angle})">
-          <line x1="0" y1="0" x2="0" y2="-96" stroke="#f8fafc" stroke-width="7" stroke-linecap="round" />
-        </g>
+        <g transform="translate(180 180) rotate(${angle})"><line x1="0" y1="0" x2="0" y2="-96" stroke="#f8fafc" stroke-width="7" stroke-linecap="round" /></g>
         <circle cx="180" cy="180" r="10" fill="#f8fafc" />
       </svg>
       <div class="gauge-value">${value}</div>
       <div class="gauge-rating">${rating}</div>
       <div class="gauge-source">${series.asOf ? `기준: ${series.asOf}` : "CNN/FinHacker"}</div>
-    </div>
-  `;
+    </div>`;
 }
 
 function renderChart(container, series) {
@@ -202,7 +182,6 @@ function renderChart(container, series) {
     renderGauge(container, series);
     return;
   }
-
   const points = series.points;
   const latest = points.at(-1).value;
   const previous = Number.isFinite(series.previous) ? series.previous : points.at(-2).value;
@@ -218,32 +197,15 @@ function renderChart(container, series) {
   const linePath = buildLinePath(points, bounds, width, height, pad);
   const last = plotPoint(points.at(-1), bounds, width, height, pad);
   const stroke = change >= 0 ? "#22c55e" : "#ef4444";
-
   container.innerHTML = `
     <div class="quote-meta">
       <div class="quote-price">${numberFormat.format(latest)}${unit}</div>
-      <div class="quote-change ${tone}">
-        ${sign}${numberFormat.format(change)} (${sign}${percentFormat.format(changePercent)}%)
-      </div>
+      <div class="quote-change ${tone}">${sign}${numberFormat.format(change)} (${sign}${percentFormat.format(changePercent)}%)</div>
     </div>
     <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${container.dataset.symbol} chart">
-      <defs>
-        <linearGradient id="area-${container.dataset.symbol.replace(/[^a-z0-9]/gi, "")}" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stop-color="${stroke}" stop-opacity="0.22" />
-          <stop offset="100%" stop-color="${stroke}" stop-opacity="0" />
-        </linearGradient>
-      </defs>
-      ${[0.25, 0.5, 0.75].map((ratio) => `<line x1="${pad}" y1="${height * ratio}" x2="${width - pad}" y2="${height * ratio}" stroke="#1f2937" />`).join("")}
-      ${[0.2, 0.4, 0.6, 0.8].map((ratio) => `<line x1="${width * ratio}" y1="${pad}" x2="${width * ratio}" y2="${height - pad}" stroke="#151c27" />`).join("")}
-      <path d="${linePath} L ${width - pad} ${height - pad} L ${pad} ${height - pad} Z" fill="url(#area-${container.dataset.symbol.replace(/[^a-z0-9]/gi, "")})" />
       <path d="${linePath}" fill="none" stroke="${stroke}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
       <line x1="${pad}" y1="${last.y.toFixed(2)}" x2="${width - pad}" y2="${last.y.toFixed(2)}" stroke="${stroke}" stroke-dasharray="3 4" opacity="0.65" />
-      <rect x="${width - 90}" y="${Math.max(6, last.y - 13).toFixed(2)}" width="70" height="24" rx="4" fill="${stroke}" />
-      <text x="${width - 55}" y="${Math.max(22, last.y + 4).toFixed(2)}" text-anchor="middle" fill="#fff" font-size="13" font-weight="700">${numberFormat.format(latest)}</text>
-      <text x="${width - 28}" y="24" text-anchor="end" fill="#9ca3af" font-size="12">${numberFormat.format(bounds.max)}</text>
-      <text x="${width - 28}" y="${height - 12}" text-anchor="end" fill="#9ca3af" font-size="12">${numberFormat.format(bounds.min)}</text>
-    </svg>
-  `;
+    </svg>`;
 }
 
 function getFearGreedRating(value) {
@@ -282,51 +244,67 @@ function setText(id, value) {
   if (node) node.textContent = value;
 }
 
-function addBtcLog(text) {
+function addCoinLog(text) {
   const list = document.getElementById("btc-log");
   if (!list) return;
   const item = document.createElement("li");
   item.textContent = `${new Date().toLocaleTimeString("ko-KR")} ${text}`;
   list.prepend(item);
-  while (list.children.length > 8) list.lastElementChild.remove();
+  while (list.children.length > 10) list.lastElementChild.remove();
 }
 
-function renderBtcSignal(data) {
-  setText("btc-last-price", formatKrw(data.lastPrice));
-  setText("btc-price-change", `${formatSignedPercent(data.dailyChangePercent)} 오늘`);
-  setText("btc-verdict", data.verdict);
-  setText("btc-reason", data.reason);
-  setText("btc-score", `${data.score} / 100`);
-  setText("btc-entry", `${formatKrw(data.entryLow)} - ${formatKrw(data.entryHigh)}`);
-  setText("btc-stop", formatKrw(data.stop));
-  setText("btc-take", formatKrw(data.takeProfit));
-  setText("btc-risk", `손절폭 약 ${formatSignedPercent(data.riskPercent).replace("+", "")}`);
-  setText("btc-tick", `${formatSignedPercent(data.tickMomentumPercent)} / ${data.tickWindowSeconds}초`);
-  setText("btc-book", `${formatSignedPercent(data.orderbookBiasPercent)} 매수 우위`);
-  setText("btc-premium", Number.isFinite(data.kimchiPremiumPercent) ? formatSignedPercent(data.kimchiPremiumPercent) : "-");
-  setText("btc-volatility", `${formatKrw(data.atr1m)} ATR(1분)`);
+function renderCoinMiniChart(id, data) {
+  const container = document.getElementById(`${id}-chart`);
+  if (!container || !data.chartPoints?.length) return;
+  const points = data.chartPoints;
+  const width = 760;
+  const height = 220;
+  const pad = 18;
+  const bounds = getBounds(points);
+  const path = buildLinePath(points, bounds, width, height, pad);
+  const change = points.at(-1).value - points[0].value;
+  const stroke = change >= 0 ? "#22c55e" : "#ef4444";
+  container.innerHTML = `
+    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${data.market} 1분 차트">
+      ${[0.25, 0.5, 0.75].map((r) => `<line x1="${pad}" y1="${height * r}" x2="${width - pad}" y2="${height * r}" stroke="#1f2937" />`).join("")}
+      <path d="${path}" fill="none" stroke="${stroke}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+    </svg>`;
+}
 
-  const scoreBar = document.getElementById("btc-score-bar");
-  if (scoreBar) scoreBar.style.width = `${data.score}%`;
+function renderCoinSignal(data) {
+  const id = coinId(data.market);
+  setText(`${id}-last-price`, formatKrw(data.lastPrice));
+  setText(`${id}-price-change`, `${formatSignedPercent(data.dailyChangePercent)} 오늘`);
+  setText(`${id}-verdict`, data.verdict);
+  setText(`${id}-score`, `${data.score}점`);
+  setText(`${id}-entry`, `${formatKrw(data.entryLow)} - ${formatKrw(data.entryHigh)}`);
+  setText(`${id}-stop`, formatKrw(data.stop));
+  setText(`${id}-take`, formatKrw(data.takeProfit));
+  setText(`${id}-risk`, `손절폭 ${formatSignedPercent(data.riskPercent).replace("+", "")}`);
+  setText(`${id}-reason`, data.reason);
+  setText(`${id}-tick`, `${formatSignedPercent(data.tickMomentumPercent)} / ${data.tickWindowSeconds}초`);
+  setText(`${id}-book`, `${formatSignedPercent(data.orderbookBiasPercent)}`);
+  setText(`${id}-premium`, Number.isFinite(data.kimchiPremiumPercent) ? formatSignedPercent(data.kimchiPremiumPercent) : "-");
+  setText(`${id}-atr`, `${formatKrw(data.atr1m)}`);
 
-  const verdictCard = document.getElementById("btc-verdict-card");
-  if (verdictCard) verdictCard.className = `btc-verdict-card ${data.tone}`;
+  const verdictCard = document.getElementById(`${id}-verdict-card`);
+  if (verdictCard) verdictCard.className = `coin-verdict ${data.tone}`;
 
-  const tfWrap = document.getElementById("btc-timeframes");
+  const tfWrap = document.getElementById(`${id}-timeframes`);
   if (tfWrap) {
     tfWrap.innerHTML = data.timeframes.map((tf) => `
       <div class="btc-tf-card ${tf.tone}">
         <span class="mini-label">${tf.label}</span>
         <strong>${Math.round(tf.score)}점</strong>
-        <p>${tf.notes.slice(0, 3).join(" · ") || "조건 부족"}</p>
-      </div>
-    `).join("");
+        <p>${tf.notes.slice(0, 2).join(" · ") || "조건 부족"}</p>
+      </div>`).join("");
   }
 
-  addBtcLog(`${data.verdict} · ${data.score}점 · 진입 ${formatKrw(data.entryLow)}-${formatKrw(data.entryHigh)} · 손절 ${formatKrw(data.stop)}`);
+  renderCoinMiniChart(id, data);
+  addCoinLog(`${data.name} ${data.verdict} · ${data.score}점 · 진입 ${formatKrw(data.entryLow)}-${formatKrw(data.entryHigh)}`);
 }
 
-async function loadBtcSignal(force = false) {
+async function loadCryptoSignals(force = false) {
   const view = document.getElementById("btc-view");
   if (!view.classList.contains("active")) return;
   const now = Date.now();
@@ -334,10 +312,10 @@ async function loadBtcSignal(force = false) {
   view.dataset.loadedAt = String(now);
 
   try {
-    const data = await fetchSeries("upbit-btc-signal", "KRW-BTC");
-    renderBtcSignal(data);
+    const results = await Promise.all(coinSymbols.map((symbol) => fetchSeries("upbit-crypto-signal", symbol)));
+    results.forEach(renderCoinSignal);
   } catch (error) {
-    addBtcLog(`오류: ${error.message}`);
+    addCoinLog(`오류: ${error.message}`);
   }
 }
 
@@ -351,14 +329,10 @@ function switchMarket(marketKey) {
   });
   document.getElementById("market-eyebrow").textContent = market.eyebrow;
   document.getElementById("market-title").textContent = market.title;
-  document.getElementById("updated-at").textContent =
-    `마지막 로드: ${new Date().toLocaleString("ko-KR")}`;
+  document.getElementById("updated-at").textContent = `마지막 로드: ${new Date().toLocaleString("ko-KR")}`;
 
-  if (market.type === "btc") {
-    loadBtcSignal(true);
-  } else {
-    loadVisibleCharts();
-  }
+  if (market.type === "crypto") loadCryptoSignals(true);
+  else loadVisibleCharts();
 }
 
 buildViews();
@@ -366,4 +340,4 @@ document.querySelectorAll(".nav-button").forEach((button) => {
   button.addEventListener("click", () => switchMarket(button.dataset.market));
 });
 switchMarket("us");
-setInterval(() => loadBtcSignal(false), 5000);
+setInterval(() => loadCryptoSignals(false), 5000);

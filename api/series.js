@@ -1,6 +1,9 @@
 const yahooSymbols = new Set(["^DJI", "^IXIC", "^GSPC", "^VIX", "GC=F", "SI=F", "HG=F", "CL=F", "^KS11", "^KQ11"]);
-
-const btcTimeframes = [
+const cryptoMarkets = {
+  "KRW-BTC": { name: "비트코인", binance: "BTCUSDT" },
+  "KRW-ETH": { name: "이더리움", binance: "ETHUSDT" },
+};
+const cryptoTimeframes = [
   { key: "1m", label: "1분", path: "minutes/1", weight: 14 },
   { key: "3m", label: "3분", path: "minutes/3", weight: 14 },
   { key: "5m", label: "5분", path: "minutes/5", weight: 14 },
@@ -28,7 +31,6 @@ async function fetchYahoo(symbol) {
     { headers: { "User-Agent": "Mozilla/5.0" } },
   );
   if (!response.ok) throw new Error(`${symbol} 데이터를 불러오지 못했습니다.`);
-
   const result = (await response.json()).chart?.result?.[0];
   const closes = result?.indicators?.quote?.[0]?.close ?? [];
   const timestamps = result?.timestamp ?? [];
@@ -36,7 +38,6 @@ async function fetchYahoo(symbol) {
   const points = closes
     .map((value, index) => ({ date: timestamps[index] * 1000, value: Number(value) }))
     .filter((point) => Number.isFinite(point.date) && Number.isFinite(point.value));
-
   if (points.length < 2) throw new Error(`${symbol} 차트 데이터가 부족합니다.`);
   return { points, previous: Number.isFinite(previousClose) ? previousClose : points.at(-2).value };
 }
@@ -80,7 +81,6 @@ async function fetchNaverInvestorRows() {
     .map((match) => match[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim())
     .filter(Boolean);
   const rows = [];
-
   for (let index = 0; index + 10 < cells.length; index += 11) {
     const date = cells[index];
     const foreign = parseNumber(cells[index + 2]);
@@ -130,9 +130,8 @@ async function fetchFearGreed() {
       }
     }
   } catch {
-    // CNN may block server-side requests. The public mirror below is a fallback.
+    // CNN may block server-side requests. Use the mirror below.
   }
-
   const response = await fetch("https://www.finhacker.cz/en/fear-and-greed-index-historical-data-and-chart/", {
     headers: { "User-Agent": "Mozilla/5.0" },
   });
@@ -147,6 +146,7 @@ async function fetchFearGreed() {
 
 function mapUpbitCandle(candle) {
   return {
+    date: new Date(candle.candle_date_time_kst).getTime(),
     open: candle.opening_price,
     high: candle.high_price,
     low: candle.low_price,
@@ -185,9 +185,7 @@ function atr(candles, length = 14) {
   for (let index = candles.length - length; index < candles.length; index += 1) {
     const current = candles[index];
     const previous = candles[index - 1];
-    ranges.push(
-      Math.max(current.high - current.low, Math.abs(current.high - previous.close), Math.abs(current.low - previous.close)),
-    );
+    ranges.push(Math.max(current.high - current.low, Math.abs(current.high - previous.close), Math.abs(current.low - previous.close)));
   }
   return ranges.reduce((sum, value) => sum + value, 0) / ranges.length;
 }
@@ -199,7 +197,7 @@ function vwap(candles, length = 20) {
   return sample.reduce((sum, candle) => sum + ((candle.high + candle.low + candle.close) / 3) * candle.volume, 0) / volume;
 }
 
-function analyzeBtcFrame(candles) {
+function analyzeCryptoFrame(candles) {
   const closes = candles.map((candle) => candle.close);
   const last = closes.at(-1);
   const ema9 = ema(closes.slice(-40), 9);
@@ -264,17 +262,19 @@ function calculateTickMomentum(ticks) {
   };
 }
 
-async function fetchBtcSignal() {
+async function fetchCryptoSignal(market) {
+  const meta = cryptoMarkets[market];
+  if (!meta) throw new Error("지원하지 않는 코인입니다.");
   const upbitBase = "https://api.upbit.com/v1";
   const [tickerRows, orderbookRows, ticks, usdKrwRows, binanceTicker, frameEntries] = await Promise.all([
-    fetchJson(`${upbitBase}/ticker?markets=KRW-BTC`),
-    fetchJson(`${upbitBase}/orderbook?markets=KRW-BTC`),
-    fetchJson(`${upbitBase}/trades/ticks?market=KRW-BTC&count=80`),
+    fetchJson(`${upbitBase}/ticker?markets=${market}`),
+    fetchJson(`${upbitBase}/orderbook?markets=${market}`),
+    fetchJson(`${upbitBase}/trades/ticks?market=${market}&count=80`),
     fetchJson(`${upbitBase}/ticker?markets=KRW-USDT`).catch(() => null),
-    fetchJson("https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT").catch(() => null),
+    fetchJson(`https://api.binance.com/api/v3/ticker/price?symbol=${meta.binance}`).catch(() => null),
     Promise.all(
-      btcTimeframes.map((frame) =>
-        fetchJson(`${upbitBase}/candles/${frame.path}?market=KRW-BTC&count=120`).then((rows) => [
+      cryptoTimeframes.map((frame) =>
+        fetchJson(`${upbitBase}/candles/${frame.path}?market=${market}&count=120`).then((rows) => [
           frame.key,
           rows.reverse().map(mapUpbitCandle),
         ]),
@@ -284,8 +284,8 @@ async function fetchBtcSignal() {
 
   const ticker = tickerRows[0];
   const frames = Object.fromEntries(frameEntries);
-  const analyses = Object.fromEntries(btcTimeframes.map((frame) => [frame.key, analyzeBtcFrame(frames[frame.key])]));
-  const weighted = btcTimeframes.reduce((sum, frame) => sum + (analyses[frame.key].score * frame.weight) / 100, 0);
+  const analyses = Object.fromEntries(cryptoTimeframes.map((frame) => [frame.key, analyzeCryptoFrame(frames[frame.key])]));
+  const weighted = cryptoTimeframes.reduce((sum, frame) => sum + (analyses[frame.key].score * frame.weight) / 100, 0);
   const orderbookBiasPercent = calculateOrderbookBias(orderbookRows[0]);
   const tick = calculateTickMomentum(ticks);
   const usdKrw = usdKrwRows?.[0]?.trade_price;
@@ -327,6 +327,8 @@ async function fetchBtcSignal() {
   }
 
   return {
+    market,
+    name: meta.name,
     lastPrice,
     dailyChangePercent: ticker.signed_change_rate * 100,
     verdict,
@@ -343,7 +345,8 @@ async function fetchBtcSignal() {
     tickWindowSeconds: tick.seconds,
     orderbookBiasPercent,
     kimchiPremiumPercent,
-    timeframes: btcTimeframes.map((frame) => ({
+    chartPoints: frames["1m"].slice(-80).map((candle) => ({ date: candle.date, value: candle.close })),
+    timeframes: cryptoTimeframes.map((frame) => ({
       key: frame.key,
       label: frame.label,
       score: analyses[frame.key].score,
@@ -374,8 +377,8 @@ module.exports = async function handler(req, res) {
       send(res, 200, await fetchFearGreed());
       return;
     }
-    if (source === "upbit-btc-signal" && symbol === "KRW-BTC") {
-      send(res, 200, await fetchBtcSignal(), "application/json; charset=utf-8", "no-store");
+    if (source === "upbit-crypto-signal") {
+      send(res, 200, await fetchCryptoSignal(symbol), "application/json; charset=utf-8", "no-store");
       return;
     }
 
