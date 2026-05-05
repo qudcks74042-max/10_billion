@@ -10,6 +10,27 @@ const cryptoTimeframes = [
   { key: "15m", label: "15분", path: "minutes/15", weight: 12 },
   { key: "60m", label: "1시간", path: "minutes/60", weight: 12 },
 ];
+const periodLabels = {
+  tick: "틱",
+  second: "초",
+  minute: "분",
+  hour: "시간",
+  day: "일",
+  week: "주",
+  month: "월",
+  year: "년",
+};
+const yahooPeriodMap = {
+  tick: { range: "1d", interval: "1m", label: "틱/초 근사: 1분" },
+  second: { range: "1d", interval: "1m", label: "초 근사: 1분" },
+  minute: { range: "5d", interval: "5m", label: "분: 5분" },
+  hour: { range: "1mo", interval: "60m", label: "시간: 1시간" },
+  day: { range: "1y", interval: "1d", label: "일봉" },
+  week: { range: "5y", interval: "1wk", label: "주봉" },
+  month: { range: "10y", interval: "1mo", label: "월봉" },
+  year: { range: "max", interval: "3mo", label: "년: 3개월봉" },
+};
+const periodDays = { tick: 1, second: 1, minute: 5, hour: 30, day: 365, week: 365 * 5, month: 365 * 10, year: 365 * 50 };
 
 function send(res, status, payload, contentType = "application/json; charset=utf-8", cacheControl = "s-maxage=60, stale-while-revalidate=300") {
   res.statusCode = status;
@@ -18,16 +39,33 @@ function send(res, status, payload, contentType = "application/json; charset=utf
   res.end(typeof payload === "string" ? payload : JSON.stringify(payload));
 }
 
-async function fetchJson(url, headers = {}) {
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchJson(url, headers = {}, retry = 1) {
   const response = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0", ...headers } });
-  if (!response.ok) throw new Error(`${url} 요청 실패`);
+  if (!response.ok) {
+    if ((response.status === 429 || response.status >= 500) && retry > 0) {
+      await sleep(350);
+      return fetchJson(url, headers, retry - 1);
+    }
+    throw new Error(`${url} 요청 실패`);
+  }
   return response.json();
 }
 
-async function fetchYahoo(symbol) {
+function limitByPeriod(points, period) {
+  const days = periodDays[period] || 365;
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  return points.filter((point) => point.date >= cutoff);
+}
+
+async function fetchYahoo(symbol, period = "day") {
   if (!yahooSymbols.has(symbol)) throw new Error("지원하지 않는 Yahoo 종목입니다.");
+  const option = yahooPeriodMap[period] || yahooPeriodMap.day;
   const response = await fetch(
-    `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=5d&interval=15m`,
+    `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${option.range}&interval=${option.interval}`,
     { headers: { "User-Agent": "Mozilla/5.0" } },
   );
   if (!response.ok) throw new Error(`${symbol} 데이터를 불러오지 못했습니다.`);
@@ -39,22 +77,26 @@ async function fetchYahoo(symbol) {
     .map((value, index) => ({ date: timestamps[index] * 1000, value: Number(value) }))
     .filter((point) => Number.isFinite(point.date) && Number.isFinite(point.value));
   if (points.length < 2) throw new Error(`${symbol} 차트 데이터가 부족합니다.`);
-  return { points, previous: Number.isFinite(previousClose) ? previousClose : points.at(-2).value };
+  return {
+    points,
+    previous: Number.isFinite(previousClose) ? previousClose : points.at(-2).value,
+    periodLabel: option.label,
+  };
 }
 
-async function fetchFred() {
+async function fetchFred(period = "month") {
   const response = await fetch("https://fred.stlouisfed.org/graph/fredgraph.csv?id=FEDFUNDS");
   if (!response.ok) throw new Error("기준금리 데이터를 불러오지 못했습니다.");
   const rows = (await response.text()).trim().split("\n").slice(1);
-  const points = rows
+  let points = rows
     .map((row) => {
       const [date, value] = row.split(",");
       return { date: new Date(date).getTime(), value: Number(value) };
     })
-    .filter((point) => Number.isFinite(point.date) && Number.isFinite(point.value))
-    .slice(-120);
+    .filter((point) => Number.isFinite(point.date) && Number.isFinite(point.value));
+  points = limitByPeriod(points, period).slice(-400);
   if (points.length < 2) throw new Error("기준금리 차트 데이터가 부족합니다.");
-  return { points, previous: points.at(-2).value, unit: "%" };
+  return { points, previous: points.at(-2).value, unit: "%", periodLabel: periodLabels[period] || "월" };
 }
 
 function getKstDateString() {
@@ -97,12 +139,13 @@ function naverDateToTime(value) {
   return new Date(`20${year}-${month}-${day}T00:00:00+09:00`).getTime();
 }
 
-async function fetchNaverFlow(kind) {
+async function fetchNaverFlow(kind, period = "day") {
   if (!["foreign", "institution"].includes(kind)) throw new Error("지원하지 않는 수급 항목입니다.");
   const rows = await fetchNaverInvestorRows();
-  const points = rows.map((row) => ({ date: naverDateToTime(row.date), value: row[kind] })).reverse();
+  let points = rows.map((row) => ({ date: naverDateToTime(row.date), value: row[kind] })).reverse();
+  points = limitByPeriod(points, period);
   if (points.length < 2) throw new Error("수급 차트 데이터가 부족합니다.");
-  return { points, previous: points.at(-2).value, unit: "억원" };
+  return { points, previous: points.at(-2).value, unit: "억원", periodLabel: periodLabels[period] || "일" };
 }
 
 function getFearGreedRating(value) {
@@ -153,6 +196,10 @@ function mapUpbitCandle(candle) {
     close: candle.trade_price,
     volume: candle.candle_acc_trade_volume,
   };
+}
+
+function mapTick(tick) {
+  return { date: tick.timestamp, value: tick.trade_price };
 }
 
 function sma(values, length) {
@@ -262,25 +309,51 @@ function calculateTickMomentum(ticks) {
   };
 }
 
-async function fetchCryptoSignal(market) {
+async function fetchCryptoChartPoints(market, period) {
+  const upbitBase = "https://api.upbit.com/v1";
+  if (period === "tick" || period === "second") {
+    const ticks = await fetchJson(`${upbitBase}/trades/ticks?market=${market}&count=200`);
+    return { points: ticks.reverse().map(mapTick), periodLabel: period === "tick" ? "틱 체결" : "초 단위 체결" };
+  }
+  const candleMap = {
+    minute: { path: "minutes/1", label: "1분봉" },
+    hour: { path: "minutes/60", label: "1시간봉" },
+    day: { path: "days", label: "일봉" },
+    week: { path: "weeks", label: "주봉" },
+    month: { path: "months", label: "월봉" },
+    year: { path: "months", label: "년: 월봉" },
+  };
+  const option = candleMap[period] || candleMap.minute;
+  const rows = await fetchJson(`${upbitBase}/candles/${option.path}?market=${market}&count=200`);
+  return {
+    points: rows.reverse().map(mapUpbitCandle).map((candle) => ({ date: candle.date, value: candle.close })),
+    periodLabel: option.label,
+  };
+}
+
+async function fetchCryptoFrameEntries(upbitBase, market) {
+  const entries = [];
+  for (const frame of cryptoTimeframes) {
+    const rows = await fetchJson(`${upbitBase}/candles/${frame.path}?market=${market}&count=120`);
+    entries.push([frame.key, rows.reverse().map(mapUpbitCandle)]);
+    await sleep(120);
+  }
+  return entries;
+}
+
+async function fetchCryptoSignal(market, period = "minute") {
   const meta = cryptoMarkets[market];
   if (!meta) throw new Error("지원하지 않는 코인입니다.");
   const upbitBase = "https://api.upbit.com/v1";
-  const [tickerRows, orderbookRows, ticks, usdKrwRows, binanceTicker, frameEntries] = await Promise.all([
+  const [tickerRows, orderbookRows, ticks, usdKrwRows, binanceTicker, chartData] = await Promise.all([
     fetchJson(`${upbitBase}/ticker?markets=${market}`),
     fetchJson(`${upbitBase}/orderbook?markets=${market}`),
     fetchJson(`${upbitBase}/trades/ticks?market=${market}&count=80`),
     fetchJson(`${upbitBase}/ticker?markets=KRW-USDT`).catch(() => null),
     fetchJson(`https://api.binance.com/api/v3/ticker/price?symbol=${meta.binance}`).catch(() => null),
-    Promise.all(
-      cryptoTimeframes.map((frame) =>
-        fetchJson(`${upbitBase}/candles/${frame.path}?market=${market}&count=120`).then((rows) => [
-          frame.key,
-          rows.reverse().map(mapUpbitCandle),
-        ]),
-      ),
-    ),
+    fetchCryptoChartPoints(market, period),
   ]);
+  const frameEntries = await fetchCryptoFrameEntries(upbitBase, market);
 
   const ticker = tickerRows[0];
   const frames = Object.fromEntries(frameEntries);
@@ -345,7 +418,8 @@ async function fetchCryptoSignal(market) {
     tickWindowSeconds: tick.seconds,
     orderbookBiasPercent,
     kimchiPremiumPercent,
-    chartPoints: frames["1m"].slice(-80).map((candle) => ({ date: candle.date, value: candle.close })),
+    chartPoints: chartData.points,
+    chartPeriodLabel: chartData.periodLabel,
     timeframes: cryptoTimeframes.map((frame) => ({
       key: frame.key,
       label: frame.label,
@@ -360,17 +434,18 @@ module.exports = async function handler(req, res) {
   try {
     const source = req.query.source;
     const symbol = req.query.symbol;
+    const period = req.query.period || "day";
 
     if (source === "yahoo") {
-      send(res, 200, await fetchYahoo(symbol));
+      send(res, 200, await fetchYahoo(symbol, period));
       return;
     }
     if (source === "fred" && symbol === "FEDFUNDS") {
-      send(res, 200, await fetchFred());
+      send(res, 200, await fetchFred(period));
       return;
     }
     if (source === "naver-flow") {
-      send(res, 200, await fetchNaverFlow(symbol));
+      send(res, 200, await fetchNaverFlow(symbol, period));
       return;
     }
     if (source === "feargreed") {
@@ -378,7 +453,7 @@ module.exports = async function handler(req, res) {
       return;
     }
     if (source === "upbit-crypto-signal") {
-      send(res, 200, await fetchCryptoSignal(symbol), "application/json; charset=utf-8", "no-store");
+      send(res, 200, await fetchCryptoSignal(symbol, period), "application/json; charset=utf-8", "no-store");
       return;
     }
 

@@ -24,7 +24,7 @@ const markets = {
     type: "charts",
     cards: [
       ["KOSPI Composite", "코스피", "KOSPI", "yahoo", "^KS11"],
-      ["KOSDAQ Composite", "코스닥", "KOSDAQ", "^KQ11"],
+      ["KOSDAQ Composite", "코스닥", "KOSDAQ", "yahoo", "^KQ11"],
       ["KOSPI Foreign Net Buying", "외국인 순매수", "외국인", "naver-flow", "foreign"],
       ["KOSPI Institution Net Buying", "기관 순매수", "기관", "naver-flow", "institution"],
     ],
@@ -37,12 +37,27 @@ const markets = {
   },
 };
 
-markets.kr.cards[1] = ["KOSDAQ Composite", "코스닥", "KOSDAQ", "yahoo", "^KQ11"];
-
+const chartPeriods = [
+  ["tick", "틱"],
+  ["second", "초"],
+  ["minute", "분"],
+  ["hour", "시간"],
+  ["day", "일"],
+  ["week", "주"],
+  ["month", "월"],
+  ["year", "년"],
+];
 const coinSymbols = ["KRW-BTC", "KRW-ETH"];
+const coinNames = { "KRW-BTC": "비트코인", "KRW-ETH": "이더리움" };
 const numberFormat = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
 const krwFormat = new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 0 });
 const percentFormat = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 2 });
+
+function createRangeButtons(active = "minute") {
+  return chartPeriods
+    .map(([value, label]) => `<button class="range-button${value === active ? " active" : ""}" type="button" data-period="${value}">${label}</button>`)
+    .join("");
+}
 
 function createCard([subtitle, title, badge, source, symbol]) {
   const card = document.createElement("article");
@@ -55,7 +70,8 @@ function createCard([subtitle, title, badge, source, symbol]) {
       </div>
       <span>${badge}</span>
     </div>
-    <div class="market-chart" data-source="${source}" data-symbol="${symbol}">
+    <div class="range-row">${createRangeButtons(source === "yahoo" ? "day" : "month")}</div>
+    <div class="market-chart" data-source="${source}" data-symbol="${symbol}" data-period="${source === "yahoo" ? "day" : "month"}">
       <p>데이터 로딩 중</p>
     </div>
   `;
@@ -72,28 +88,26 @@ function buildCryptoView() {
     <div id="coin-grid" class="coin-grid">
       ${coinSymbols.map((symbol) => {
         const id = coinId(symbol);
-        const name = symbol === "KRW-BTC" ? "비트코인" : "이더리움";
         return `
-          <article class="coin-panel" id="${id}-panel">
+          <article class="coin-panel" id="${id}-panel" data-symbol="${symbol}" data-period="minute">
             <div class="coin-head">
               <div>
                 <span class="mini-label">${symbol}</span>
-                <h2>${name}</h2>
+                <h2>${coinNames[symbol]}</h2>
               </div>
               <div class="coin-verdict" id="${id}-verdict-card">
                 <strong id="${id}-verdict">대기</strong>
                 <span id="${id}-score">0점</span>
               </div>
             </div>
+            <div class="range-row">${createRangeButtons("minute")}</div>
             <div class="coin-main">
               <div>
                 <span class="mini-label">현재가</span>
                 <strong class="coin-price" id="${id}-last-price">-</strong>
                 <p id="${id}-price-change">-</p>
               </div>
-              <div class="coin-chart" id="${id}-chart">
-                <p>차트 로딩 중</p>
-              </div>
+              <div class="coin-chart" id="${id}-chart"><p>차트 로딩 중</p></div>
             </div>
             <div class="coin-trade-grid">
               <div><span class="mini-label">후보 진입</span><strong id="${id}-entry">-</strong></div>
@@ -103,20 +117,20 @@ function buildCryptoView() {
             </div>
             <p class="coin-reason" id="${id}-reason">데이터 로딩 중</p>
             <div class="coin-pressure">
-              <div><span class="mini-label">틱</span><strong id="${id}-tick">-</strong></div>
+              <div><span class="mini-label">틱 압력</span><strong id="${id}-tick">-</strong></div>
               <div><span class="mini-label">호가</span><strong id="${id}-book">-</strong></div>
               <div><span class="mini-label">김프</span><strong id="${id}-premium">-</strong></div>
               <div><span class="mini-label">ATR</span><strong id="${id}-atr">-</strong></div>
             </div>
-            <div class="coin-timeframes" id="${id}-timeframes"></div>
+            <section class="coin-judgement">
+              <h3>판단</h3>
+              <div class="coin-timeframes" id="${id}-timeframes"></div>
+              <ol id="${id}-log" class="coin-log"></ol>
+            </section>
           </article>
         `;
       }).join("")}
     </div>
-    <section class="btc-log-panel">
-      <h2>최근 판단</h2>
-      <ol id="btc-log"></ol>
-    </section>
   `;
 }
 
@@ -129,8 +143,10 @@ function buildViews() {
   buildCryptoView();
 }
 
-async function fetchSeries(source, symbol) {
-  const response = await fetch(`/api/series?${new URLSearchParams({ source, symbol })}`);
+async function fetchSeries(source, symbol, period) {
+  const params = new URLSearchParams({ source, symbol });
+  if (period) params.set("period", period);
+  const response = await fetch(`/api/series?${params}`);
   if (!response.ok) throw new Error((await response.text()) || `${symbol} 데이터를 불러오지 못했습니다.`);
   return response.json();
 }
@@ -182,7 +198,11 @@ function renderChart(container, series) {
     renderGauge(container, series);
     return;
   }
-  const points = series.points;
+  const points = series.points || [];
+  if (points.length < 2) {
+    container.innerHTML = "<p>차트 데이터가 부족합니다.</p>";
+    return;
+  }
   const latest = points.at(-1).value;
   const previous = Number.isFinite(series.previous) ? series.previous : points.at(-2).value;
   const change = latest - previous;
@@ -201,8 +221,10 @@ function renderChart(container, series) {
     <div class="quote-meta">
       <div class="quote-price">${numberFormat.format(latest)}${unit}</div>
       <div class="quote-change ${tone}">${sign}${numberFormat.format(change)} (${sign}${percentFormat.format(changePercent)}%)</div>
+      <div class="quote-period">${series.periodLabel || ""}</div>
     </div>
     <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${container.dataset.symbol} chart">
+      ${[0.25, 0.5, 0.75].map((ratio) => `<line x1="${pad}" y1="${height * ratio}" x2="${width - pad}" y2="${height * ratio}" stroke="#1f2937" />`).join("")}
       <path d="${linePath}" fill="none" stroke="${stroke}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
       <line x1="${pad}" y1="${last.y.toFixed(2)}" x2="${width - pad}" y2="${last.y.toFixed(2)}" stroke="${stroke}" stroke-dasharray="3 4" opacity="0.65" />
     </svg>`;
@@ -220,13 +242,18 @@ function renderError(container, error) {
   container.innerHTML = `<p>${error.message}</p>`;
 }
 
+function loadMarketChart(container, force = false) {
+  if (!force && container.dataset.loaded === "true") return;
+  container.dataset.loaded = "true";
+  container.innerHTML = "<p>데이터 로딩 중</p>";
+  fetchSeries(container.dataset.source, container.dataset.symbol, container.dataset.period)
+    .then((series) => renderChart(container, series))
+    .catch((error) => renderError(container, error));
+}
+
 function loadVisibleCharts() {
   document.querySelector(".market-view.active").querySelectorAll(".market-chart").forEach((container) => {
-    if (container.dataset.loaded === "true") return;
-    container.dataset.loaded = "true";
-    fetchSeries(container.dataset.source, container.dataset.symbol)
-      .then((series) => renderChart(container, series))
-      .catch((error) => renderError(container, error));
+    loadMarketChart(container);
   });
 }
 
@@ -244,31 +271,24 @@ function setText(id, value) {
   if (node) node.textContent = value;
 }
 
-function addCoinLog(text) {
-  const list = document.getElementById("btc-log");
+function addCoinLog(symbol, text) {
+  const list = document.getElementById(`${coinId(symbol)}-log`);
   if (!list) return;
   const item = document.createElement("li");
   item.textContent = `${new Date().toLocaleTimeString("ko-KR")} ${text}`;
   list.prepend(item);
-  while (list.children.length > 10) list.lastElementChild.remove();
+  while (list.children.length > 5) list.lastElementChild.remove();
 }
 
-function renderCoinMiniChart(id, data) {
+function renderCoinChart(id, data) {
   const container = document.getElementById(`${id}-chart`);
   if (!container || !data.chartPoints?.length) return;
-  const points = data.chartPoints;
-  const width = 760;
-  const height = 220;
-  const pad = 18;
-  const bounds = getBounds(points);
-  const path = buildLinePath(points, bounds, width, height, pad);
-  const change = points.at(-1).value - points[0].value;
-  const stroke = change >= 0 ? "#22c55e" : "#ef4444";
-  container.innerHTML = `
-    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${data.market} 1분 차트">
-      ${[0.25, 0.5, 0.75].map((r) => `<line x1="${pad}" y1="${height * r}" x2="${width - pad}" y2="${height * r}" stroke="#1f2937" />`).join("")}
-      <path d="${path}" fill="none" stroke="${stroke}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
-    </svg>`;
+  renderChart(container, {
+    points: data.chartPoints,
+    previous: data.chartPoints.at(-2)?.value,
+    unit: "원",
+    periodLabel: data.chartPeriodLabel,
+  });
 }
 
 function renderCoinSignal(data) {
@@ -283,9 +303,9 @@ function renderCoinSignal(data) {
   setText(`${id}-risk`, `손절폭 ${formatSignedPercent(data.riskPercent).replace("+", "")}`);
   setText(`${id}-reason`, data.reason);
   setText(`${id}-tick`, `${formatSignedPercent(data.tickMomentumPercent)} / ${data.tickWindowSeconds}초`);
-  setText(`${id}-book`, `${formatSignedPercent(data.orderbookBiasPercent)}`);
+  setText(`${id}-book`, formatSignedPercent(data.orderbookBiasPercent));
   setText(`${id}-premium`, Number.isFinite(data.kimchiPremiumPercent) ? formatSignedPercent(data.kimchiPremiumPercent) : "-");
-  setText(`${id}-atr`, `${formatKrw(data.atr1m)}`);
+  setText(`${id}-atr`, formatKrw(data.atr1m));
 
   const verdictCard = document.getElementById(`${id}-verdict-card`);
   if (verdictCard) verdictCard.className = `coin-verdict ${data.tone}`;
@@ -300,22 +320,30 @@ function renderCoinSignal(data) {
       </div>`).join("");
   }
 
-  renderCoinMiniChart(id, data);
-  addCoinLog(`${data.name} ${data.verdict} · ${data.score}점 · 진입 ${formatKrw(data.entryLow)}-${formatKrw(data.entryHigh)}`);
+  renderCoinChart(id, data);
+  addCoinLog(data.market, `${data.verdict} · ${data.score}점 · ${data.chartPeriodLabel} 차트 · 진입 ${formatKrw(data.entryLow)}-${formatKrw(data.entryHigh)}`);
+}
+
+async function loadCoinSignal(panel, force = false) {
+  const symbol = panel.dataset.symbol;
+  const period = panel.dataset.period || "minute";
+  const now = Date.now();
+  if (!force && panel.dataset.loadedAt && now - Number(panel.dataset.loadedAt) < 4500) return;
+  panel.dataset.loadedAt = String(now);
+
+  try {
+    const data = await fetchSeries("upbit-crypto-signal", symbol, period);
+    renderCoinSignal(data);
+  } catch (error) {
+    addCoinLog(symbol, `오류: ${error.message}`);
+  }
 }
 
 async function loadCryptoSignals(force = false) {
   const view = document.getElementById("btc-view");
   if (!view.classList.contains("active")) return;
-  const now = Date.now();
-  if (!force && view.dataset.loadedAt && now - Number(view.dataset.loadedAt) < 4500) return;
-  view.dataset.loadedAt = String(now);
-
-  try {
-    const results = await Promise.all(coinSymbols.map((symbol) => fetchSeries("upbit-crypto-signal", symbol)));
-    results.forEach(renderCoinSignal);
-  } catch (error) {
-    addCoinLog(`오류: ${error.message}`);
+  for (const panel of view.querySelectorAll(".coin-panel")) {
+    await loadCoinSignal(panel, force);
   }
 }
 
@@ -338,6 +366,24 @@ function switchMarket(marketKey) {
 buildViews();
 document.querySelectorAll(".nav-button").forEach((button) => {
   button.addEventListener("click", () => switchMarket(button.dataset.market));
+});
+document.addEventListener("click", (event) => {
+  const button = event.target.closest(".range-button");
+  if (!button) return;
+  const row = button.closest(".range-row");
+  row.querySelectorAll(".range-button").forEach((item) => item.classList.toggle("active", item === button));
+  const period = button.dataset.period;
+  const chart = row.parentElement.querySelector(".market-chart");
+  const panel = row.closest(".coin-panel");
+  if (chart) {
+    chart.dataset.period = period;
+    chart.dataset.loaded = "false";
+    loadMarketChart(chart, true);
+  }
+  if (panel) {
+    panel.dataset.period = period;
+    loadCoinSignal(panel, true);
+  }
 });
 switchMarket("us");
 setInterval(() => loadCryptoSignals(false), 5000);
