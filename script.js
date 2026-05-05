@@ -1,8 +1,9 @@
 const markets = {
   us: {
     eyebrow: "US Market",
-    title: "미국장 주요 지표",
+    title: "미국 주요 지표",
     target: "us-view",
+    type: "charts",
     cards: [
       ["Dow Jones", "다우존스", "DJI", "yahoo", "^DJI"],
       ["Nasdaq Composite", "나스닥", "IXIC", "yahoo", "^IXIC"],
@@ -18,18 +19,26 @@ const markets = {
   },
   kr: {
     eyebrow: "Korea Market",
-    title: "한국장 주요 지표",
+    title: "한국 주요 지표",
     target: "kr-view",
+    type: "charts",
     cards: [
       ["KOSPI Composite", "코스피", "KOSPI", "yahoo", "^KS11"],
       ["KOSDAQ Composite", "코스닥", "KOSDAQ", "yahoo", "^KQ11"],
-      ["KOSPI Foreign Net Buying", "외인 유입량", "외인", "naver-flow", "foreign"],
-      ["KOSPI Institution Net Buying", "기관 유입량", "기관", "naver-flow", "institution"],
+      ["KOSPI Foreign Net Buying", "외국인 순매수", "외국인", "naver-flow", "foreign"],
+      ["KOSPI Institution Net Buying", "기관 순매수", "기관", "naver-flow", "institution"],
     ],
+  },
+  btc: {
+    eyebrow: "Bitcoin Scalping",
+    title: "비트코인 롱 단타 위치",
+    target: "btc-view",
+    type: "btc",
   },
 };
 
 const numberFormat = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
+const krwFormat = new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 0 });
 const percentFormat = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2,
   minimumFractionDigits: 2,
@@ -53,10 +62,77 @@ function createCard([subtitle, title, badge, source, symbol]) {
   return card;
 }
 
+function buildBtcView() {
+  const view = document.getElementById("btc-view");
+  view.innerHTML = `
+    <div class="btc-signal-panel">
+      <div class="btc-price-card">
+        <span class="mini-label">KRW-BTC 현재가</span>
+        <strong id="btc-last-price">-</strong>
+        <p id="btc-price-change">-</p>
+      </div>
+      <div class="btc-verdict-card" id="btc-verdict-card">
+        <span class="mini-label">롱 신호</span>
+        <strong id="btc-verdict">대기</strong>
+        <p id="btc-reason">데이터 로딩 중</p>
+      </div>
+      <div class="btc-score-card">
+        <span class="mini-label">종합 점수</span>
+        <div class="score-line"><div id="btc-score-bar"></div></div>
+        <strong id="btc-score">0 / 100</strong>
+      </div>
+    </div>
+    <div class="btc-trade-grid">
+      <article>
+        <span class="mini-label">후보 진입</span>
+        <strong id="btc-entry">-</strong>
+        <p>급등 추격보다 VWAP/EMA 근처 재돌파를 우선합니다.</p>
+      </article>
+      <article>
+        <span class="mini-label">무효화</span>
+        <strong id="btc-stop">-</strong>
+        <p>종가 이탈 시 롱 시나리오를 다시 계산합니다.</p>
+      </article>
+      <article>
+        <span class="mini-label">부분익절</span>
+        <strong id="btc-take">-</strong>
+        <p>1분 ATR 기준 1차 청산 후보입니다.</p>
+      </article>
+      <article>
+        <span class="mini-label">리스크</span>
+        <strong id="btc-risk">-</strong>
+        <p>작은 손절폭이 전제입니다. 과레버리지는 계산하지 않습니다.</p>
+      </article>
+    </div>
+    <div class="btc-detail-grid">
+      <section>
+        <h2>타임프레임 체크</h2>
+        <div id="btc-timeframes" class="btc-timeframes"></div>
+      </section>
+      <section>
+        <h2>실시간 압력</h2>
+        <div class="btc-pressure">
+          <div><span class="mini-label">틱 모멘텀</span><strong id="btc-tick">-</strong></div>
+          <div><span class="mini-label">호가 매수벽</span><strong id="btc-book">-</strong></div>
+          <div><span class="mini-label">김치 프리미엄</span><strong id="btc-premium">-</strong></div>
+          <div><span class="mini-label">변동성</span><strong id="btc-volatility">-</strong></div>
+        </div>
+      </section>
+    </div>
+    <section class="btc-log-panel">
+      <h2>최근 판단</h2>
+      <ol id="btc-log"></ol>
+    </section>
+  `;
+}
+
 function buildViews() {
   Object.values(markets).forEach((market) => {
-    document.getElementById(market.target).replaceChildren(...market.cards.map(createCard));
+    if (market.type === "charts") {
+      document.getElementById(market.target).replaceChildren(...market.cards.map(createCard));
+    }
   });
+  buildBtcView();
 }
 
 async function fetchSeries(source, symbol) {
@@ -192,6 +268,79 @@ function loadVisibleCharts() {
   });
 }
 
+function formatKrw(value) {
+  return Number.isFinite(value) ? `${krwFormat.format(value)}원` : "-";
+}
+
+function formatSignedPercent(value) {
+  if (!Number.isFinite(value)) return "-";
+  return `${value >= 0 ? "+" : ""}${percentFormat.format(value)}%`;
+}
+
+function setText(id, value) {
+  const node = document.getElementById(id);
+  if (node) node.textContent = value;
+}
+
+function addBtcLog(text) {
+  const list = document.getElementById("btc-log");
+  if (!list) return;
+  const item = document.createElement("li");
+  item.textContent = `${new Date().toLocaleTimeString("ko-KR")} ${text}`;
+  list.prepend(item);
+  while (list.children.length > 8) list.lastElementChild.remove();
+}
+
+function renderBtcSignal(data) {
+  setText("btc-last-price", formatKrw(data.lastPrice));
+  setText("btc-price-change", `${formatSignedPercent(data.dailyChangePercent)} 오늘`);
+  setText("btc-verdict", data.verdict);
+  setText("btc-reason", data.reason);
+  setText("btc-score", `${data.score} / 100`);
+  setText("btc-entry", `${formatKrw(data.entryLow)} - ${formatKrw(data.entryHigh)}`);
+  setText("btc-stop", formatKrw(data.stop));
+  setText("btc-take", formatKrw(data.takeProfit));
+  setText("btc-risk", `손절폭 약 ${formatSignedPercent(data.riskPercent).replace("+", "")}`);
+  setText("btc-tick", `${formatSignedPercent(data.tickMomentumPercent)} / ${data.tickWindowSeconds}초`);
+  setText("btc-book", `${formatSignedPercent(data.orderbookBiasPercent)} 매수 우위`);
+  setText("btc-premium", Number.isFinite(data.kimchiPremiumPercent) ? formatSignedPercent(data.kimchiPremiumPercent) : "-");
+  setText("btc-volatility", `${formatKrw(data.atr1m)} ATR(1분)`);
+
+  const scoreBar = document.getElementById("btc-score-bar");
+  if (scoreBar) scoreBar.style.width = `${data.score}%`;
+
+  const verdictCard = document.getElementById("btc-verdict-card");
+  if (verdictCard) verdictCard.className = `btc-verdict-card ${data.tone}`;
+
+  const tfWrap = document.getElementById("btc-timeframes");
+  if (tfWrap) {
+    tfWrap.innerHTML = data.timeframes.map((tf) => `
+      <div class="btc-tf-card ${tf.tone}">
+        <span class="mini-label">${tf.label}</span>
+        <strong>${Math.round(tf.score)}점</strong>
+        <p>${tf.notes.slice(0, 3).join(" · ") || "조건 부족"}</p>
+      </div>
+    `).join("");
+  }
+
+  addBtcLog(`${data.verdict} · ${data.score}점 · 진입 ${formatKrw(data.entryLow)}-${formatKrw(data.entryHigh)} · 손절 ${formatKrw(data.stop)}`);
+}
+
+async function loadBtcSignal(force = false) {
+  const view = document.getElementById("btc-view");
+  if (!view.classList.contains("active")) return;
+  const now = Date.now();
+  if (!force && view.dataset.loadedAt && now - Number(view.dataset.loadedAt) < 4500) return;
+  view.dataset.loadedAt = String(now);
+
+  try {
+    const data = await fetchSeries("upbit-btc-signal", "KRW-BTC");
+    renderBtcSignal(data);
+  } catch (error) {
+    addBtcLog(`오류: ${error.message}`);
+  }
+}
+
 function switchMarket(marketKey) {
   const market = markets[marketKey];
   document.querySelectorAll(".nav-button").forEach((button) => {
@@ -204,7 +353,12 @@ function switchMarket(marketKey) {
   document.getElementById("market-title").textContent = market.title;
   document.getElementById("updated-at").textContent =
     `마지막 로드: ${new Date().toLocaleString("ko-KR")}`;
-  loadVisibleCharts();
+
+  if (market.type === "btc") {
+    loadBtcSignal(true);
+  } else {
+    loadVisibleCharts();
+  }
 }
 
 buildViews();
@@ -212,3 +366,4 @@ document.querySelectorAll(".nav-button").forEach((button) => {
   button.addEventListener("click", () => switchMarket(button.dataset.market));
 });
 switchMarket("us");
+setInterval(() => loadBtcSignal(false), 5000);
